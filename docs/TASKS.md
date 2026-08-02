@@ -70,7 +70,7 @@ the repo).
   hypothesis correctly identifies the injected fault type in its
   explanation text.
 
-### Issue 3: Baseline comparison agent
+### Issue 3: Baseline comparison agent 
 - A second, deliberately dumb RCA path: same LLM, but fed raw telemetry
   directly with no graph, no statistical pre-filtering.
 - This is your control group for the research question — you need this to
