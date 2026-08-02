@@ -181,6 +181,85 @@ class VerificationResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Benchmark scoring helpers — shared by IncidentReport.root_cause_correct()
+# and evaluation/benchmark_runner.py, which scores RCAResults directly
+# without needing a full IncidentReport (see CONTRACT.md rule 4: only
+# reachable here via evidence_events/evidence_nodes, never ground truth
+# leaking into the reasoning layer itself).
+# ---------------------------------------------------------------------------
+
+def resolve_hypothesis_root_event_ids(
+    hypothesis: RootCauseHypothesis,
+    evidence_events: list[EvidenceEvent],
+    evidence_nodes: Optional[list[EvidenceNode]] = None,
+) -> set[str]:
+    """Resolve a hypothesis's root (``node_id``) back to the EvidenceEvent
+    id(s) it actually traces to, regardless of which ID space it was
+    written in.
+
+    RCAAgent (structured) writes an EvidenceNode.node_id there; NaiveRCAAgent
+    (baseline) writes an EvidenceEvent.event_id directly — see
+    reasoning/rca_agent.py's NaiveRCAAgent docstring for why. A naive
+    ``hypothesis.node_id == some_event_id`` comparison would silently treat
+    every structured hypothesis as wrong, since node ids and event ids are
+    drawn from disjoint ``uuid4()`` spaces. This resolves both down to the
+    same event_id space instead:
+
+      1. If ``node_id`` matches an ``EvidenceNode.node_id`` in
+         ``evidence_nodes``, return that node's ``source_events``.
+      2. Else, if ``node_id`` is itself a known ``EvidenceEvent.event_id``,
+         return it directly (the baseline case).
+      3. Else, return an empty set — the hypothesis doesn't resolve to any
+         evidence we were given, so it can't be scored as correct.
+    """
+    nodes_by_id = {node.node_id: node for node in (evidence_nodes or [])}
+    node = nodes_by_id.get(hypothesis.node_id)
+    if node is not None:
+        return set(node.source_events)
+
+    valid_event_ids = {event.event_id for event in evidence_events}
+    if hypothesis.node_id in valid_event_ids:
+        return {hypothesis.node_id}
+
+    return set()
+
+
+def root_cause_is_correct(
+    rca_result: RCAResult,
+    ground_truth_label: Optional[FailureType],
+    evidence_events: list[EvidenceEvent],
+    evidence_nodes: Optional[list[EvidenceNode]] = None,
+) -> bool:
+    """Did the top-ranked hypothesis's root actually originate from
+    evidence carrying the injected ``ground_truth_label``?
+
+    This is the single shared scoring predicate for benchmark runs — used by
+    ``IncidentReport.root_cause_correct()`` and directly by
+    ``evaluation/benchmark_runner.py`` (which has no need to construct a
+    full IncidentReport just to score an RCAResult). Only ``hypotheses[0]``
+    is checked: ranking correctness (whether the *right* candidate made it
+    to rank 1) is what "root cause accuracy" means here, not whether the
+    correct answer appears anywhere in the list.
+
+    If the resolved root traces to more than one EvidenceEvent (a structured
+    node can cluster several), the hypothesis counts as correct if *any* of
+    them carries the injected label — clustering is expected to group
+    same-cause evidence, so a partial match still means the hypothesis
+    correctly localized the incident.
+    """
+    if ground_truth_label is None or not rca_result.hypotheses:
+        return False
+
+    top = rca_result.hypotheses[0]
+    event_ids = resolve_hypothesis_root_event_ids(top, evidence_events, evidence_nodes)
+    if not event_ids:
+        return False
+
+    labels_by_event_id = {event.event_id: event.ground_truth_label for event in evidence_events}
+    return any(labels_by_event_id.get(event_id) == ground_truth_label for event_id in event_ids)
+
+
+# ---------------------------------------------------------------------------
 # Final assembled output — owned by Person C (integration layer)
 # ---------------------------------------------------------------------------
 
@@ -193,21 +272,26 @@ class IncidentReport(BaseModel):
     incident_id: str = Field(default_factory=lambda: str(uuid4()))
     detected_at: datetime
     evidence_events: list[EvidenceEvent]
+    evidence_nodes: list[EvidenceNode] = Field(default_factory=list)
     rca_result: RCAResult
     remediation_plan: RemediationPlan
     verification_result: VerificationResult
     ground_truth_label: Optional[FailureType] = None  # for benchmark scoring only
 
     def root_cause_correct(self) -> bool:
-        """Convenience check for benchmark scoring: did the top hypothesis
-        match the injected ground truth? Only meaningful when
-        ground_truth_label is set (i.e. during evaluation, not production).
+        """Convenience check for benchmark scoring: did the top hypothesis's
+        root resolve back to evidence carrying the injected ground truth
+        label? Only meaningful when ground_truth_label is set (i.e. during
+        evaluation, not production). See root_cause_is_correct() for the
+        resolution logic — this just supplies it with this report's data.
+
+        evidence_nodes may be left empty for reports built from a naive
+        (non-graph) RCAResult, since hypothesis.node_id is then already an
+        EvidenceEvent.event_id and resolves without it.
         """
-        if self.ground_truth_label is None or not self.rca_result.hypotheses:
-            return False
-        top = self.rca_result.hypotheses[0]
-        label_text = self.ground_truth_label.value.replace("_", " ")
-        return label_text in top.explanation.lower()
+        return root_cause_is_correct(
+            self.rca_result, self.ground_truth_label, self.evidence_events, self.evidence_nodes
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -232,13 +316,13 @@ if __name__ == "__main__":
         hypotheses=[
             RootCauseHypothesis(
                 rank=1,
-                node_id="node-1",
+                node_id=event.event_id,
                 explanation="Feature drift in customer_age likely caused prediction shift",
                 confidence=0.82,
-                supporting_node_ids=["node-1"],
+                supporting_node_ids=[event.event_id],
             )
         ],
-        causal_path_node_ids=["node-1"],
+        causal_path_node_ids=[event.event_id],
     )
 
     remediation = RemediationPlan(
@@ -246,7 +330,7 @@ if __name__ == "__main__":
         category=RemediationCategory.RETRAIN,
         action_description="Retrain model on last 30 days of data to absorb drift",
         expected_outcome="Rolling accuracy should recover by ~4-6%",
-        target_root_cause_node_id="node-1",
+        target_root_cause_node_id=event.event_id,
     )
 
     verification = VerificationResult(

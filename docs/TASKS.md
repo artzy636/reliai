@@ -79,13 +79,21 @@ the repo).
 - **Acceptance criteria:** produces an `RCAResult` in the same schema, so
   it can be scored with the same evaluation code.
 
+### Note: IncidentReport assembly now lives here
+- Final `IncidentReport` assembly (stitching `RCAResult` + `RemediationPlan`
+  + `VerificationResult` + `EvidenceEvent`s + `evidence_nodes` into one
+  `schemas.IncidentReport`) has moved from the Remediation person to the
+  Reasoning person, as part of the `evaluation/` benchmark layer — it needs
+  `IncidentReport.evidence_nodes` populated correctly from
+  `EvidenceGraphBuilder.get_nodes()`, which is already handled here.
+
 ---
 
 ## 🟨 Remediation Layer (Remediation + Verification + Frontend)
 
 **Folder:** `remediation/`
 **Consumes:** `schemas.RCAResult`
-**Produces:** `schemas.RemediationPlan`, `schemas.VerificationResult`, `schemas.IncidentReport`
+**Produces:** `schemas.RemediationPlan`, `schemas.VerificationResult`
 
 ### Issue 1: Remediation Agent
 - Takes the top `RootCauseHypothesis` from an `RCAResult`, maps it to a
@@ -107,9 +115,12 @@ the repo).
   `False`.
 
 ### Issue 3: Streamlit frontend
-- Displays an `IncidentReport`: evidence timeline, evidence graph
-  visualization, ranked hypotheses, remediation plan, before/after
+- Consumes a fully-assembled `IncidentReport` (JSON, produced by the
+  Reasoning/evaluation layer) and renders it: evidence timeline, evidence
+  graph visualization, ranked hypotheses, remediation plan, before/after
   verification metrics.
+- The frontend only *displays* a finished `IncidentReport` — it does not
+  assemble one.
 - **Acceptance criteria:** can load a saved `IncidentReport` (JSON) and
   render all five sections without crashing on missing/optional fields.
 
