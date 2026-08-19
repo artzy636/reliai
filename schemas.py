@@ -1,16 +1,16 @@
 """
 ReliAI — Shared Data Contracts
 ===============================
-Single source of truth for every data structure that crosses a person-boundary
+Single source of truth for every data structure that crosses a layer-boundary
 in the pipeline:
 
-    Person A (Detection)  --EvidenceEvent-->  Person B (Graph + RCA)
-    Person B (RCA)         --RCAResult-->      Person C (Remediation/Verification)
-    Person C (Remediation) --RemediationPlan--> Person C (Verification)
-    Person C (Verification)--VerificationResult--> Incident Report
+    Detection            --EvidenceEvent-->       Reasoning (Graph + RCA)
+    Reasoning (RCA)       --RCAResult-->           Remediation (Remediation/Verification)
+    Remediation           --RemediationPlan-->     Remediation (Verification)
+    Remediation (Verification)--VerificationResult--> Incident Report (assembled by Reasoning/evaluation)
 
 RULE: nobody changes a field in this file without a 2-minute message to the
-other two people first. Everyone imports FROM this file — nobody redefines
+other two layers first. Everyone imports FROM this file — nobody redefines
 these classes locally. If your component needs a field that isn't here,
 add it here first, then use it.
 
@@ -34,7 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class FailureType(str, Enum):
     """Ground-truth label injected by the fault-injection benchmark.
-    Owned by Person A. Keep this list matched to whatever you actually inject —
+    Owned by Detection. Keep this list matched to whatever you actually inject —
     don't leave unused types in here, it makes evaluation metrics misleading.
     """
     MISSING_VALUES = "missing_values"
@@ -66,12 +66,12 @@ class ConfidenceLevel(str, Enum):
 
 
 # ---------------------------------------------------------------------------
-# PERSON A -> PERSON B contract
+# DETECTION -> REASONING contract
 # ---------------------------------------------------------------------------
 
 class EvidenceEvent(BaseModel):
     """One anomaly detection finding. This is the atomic unit of evidence
-    that Person A's Data Agent produces and Person B's Evidence Graph
+    that Detection's Data Agent produces and Reasoning's Evidence Graph
     consumes. Every field here must be something a statistical test can
     actually populate — no LLM-generated fields belong in this class.
     """
@@ -89,13 +89,13 @@ class EvidenceEvent(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# PERSON B: Evidence Graph internals
+# REASONING: Evidence Graph internals
 # ---------------------------------------------------------------------------
 
 class EvidenceNode(BaseModel):
     """A node in the NetworkX evidence graph. Built from one or more
-    EvidenceEvents that Person B decides are related (same feature, close
-    in time, etc.) — that clustering logic lives in Person B's code, not here.
+    EvidenceEvents that Reasoning decides are related (same feature, close
+    in time, etc.) — that clustering logic lives in Reasoning's code, not here.
     """
     node_id: str = Field(default_factory=lambda: str(uuid4()))
     node_type: str            # e.g. "feature_drift", "schema_change", "prediction_shift"
@@ -117,7 +117,7 @@ class EvidenceEdge(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# PERSON B -> PERSON C contract
+# REASONING -> REMEDIATION contract
 # ---------------------------------------------------------------------------
 
 class RootCauseHypothesis(BaseModel):
@@ -133,7 +133,7 @@ class RootCauseHypothesis(BaseModel):
 
 
 class RCAResult(BaseModel):
-    """Final output of the RCA Agent. This is what Person C's Remediation
+    """Final output of the RCA Agent. This is what Remediation's Remediation
     Agent consumes — it should never need to touch the raw graph.
     """
     incident_id: str
@@ -143,7 +143,7 @@ class RCAResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# PERSON C internals: Remediation -> Verification
+# REMEDIATION internals: Remediation -> Verification
 # ---------------------------------------------------------------------------
 
 class RemediationCategory(str, Enum):
@@ -260,7 +260,8 @@ def root_cause_is_correct(
 
 
 # ---------------------------------------------------------------------------
-# Final assembled output — owned by Person C (integration layer)
+# Final assembled output — owned by Reasoning, as part of the evaluation/
+# benchmark layer (see docs/TASKS.md)
 # ---------------------------------------------------------------------------
 
 class IncidentReport(BaseModel):

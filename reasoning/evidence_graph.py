@@ -1,12 +1,12 @@
 """
 ReliAI — Evidence Graph Builder (reasoning/ layer)
 ====================================================
-Consumes: schemas.EvidenceEvent (produced by Person A's Data Agent)
+Consumes: schemas.EvidenceEvent (produced by Detection's Data Agent)
 Produces: a NetworkX DiGraph of schemas.EvidenceNode / schemas.EvidenceEdge,
 consumed downstream by the RCA Agent (reasoning/rca_agent.py).
 
 schemas.EvidenceNode's docstring is explicit that clustering logic "lives
-in Person B's code, not here" — so the two design decisions below are owned
+in Reasoning's code, not here" — so the two design decisions below are owned
 by this module, not the shared contract:
 
   * Clustering: events are grouped into a node if they share a

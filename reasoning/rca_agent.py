@@ -2,7 +2,7 @@
 ReliAI — RCA Agent (reasoning/ layer)
 =======================================
 Consumes: the NetworkX DiGraph produced by reasoning.evidence_graph.EvidenceGraphBuilder
-Produces: schemas.RCAResult, consumed downstream by Person C's Remediation Agent.
+Produces: schemas.RCAResult, consumed downstream by Remediation's Remediation Agent.
 
 Two agents live here, both emitting the same schemas.RCAResult so they can
 be scored identically (see README.md's research question):

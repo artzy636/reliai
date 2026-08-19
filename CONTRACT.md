@@ -15,9 +15,9 @@ redefining classes locally.
 
 | Layer | Owner | Produces | Consumes |
 |---|---|---|---|
-| Detection & Data Agent | Person A | `EvidenceEvent` | raw pipeline data |
-| Evidence Graph + RCA Agent | Person B | `EvidenceNode`, `EvidenceEdge`, `RCAResult` | `EvidenceEvent` (from A) |
-| Remediation + Verification + Frontend | Person C | `RemediationPlan`, `VerificationResult`, `IncidentReport` | `RCAResult` (from B) |
+| Detection & Data Agent | Detection | `EvidenceEvent` | raw pipeline data |
+| Evidence Graph + RCA Agent | Reasoning | `EvidenceNode`, `EvidenceEdge`, `RCAResult`; also assembles `IncidentReport` (`evaluation/` layer) | `EvidenceEvent` (from Detection) |
+| Remediation + Verification + Frontend | Remediation | `RemediationPlan`, `VerificationResult` | `RCAResult` (from Reasoning); frontend consumes/displays the assembled `IncidentReport` |
 
 ## Rules
 
@@ -44,19 +44,20 @@ redefining classes locally.
 ```
 reliai/
 ├── schemas.py              # this file — shared contract, edited by consensus
-├── detection/               # Person A
+├── detection/               # Detection
 │   ├── anomaly_detectors.py    # KS test, PSI, Isolation Forest, etc.
 │   ├── data_agent.py            # emits EvidenceEvent
 │   └── fault_injection.py       # benchmark harness, ground truth labels
-├── reasoning/                # Person B
+├── reasoning/                # Reasoning
 │   ├── evidence_graph.py        # NetworkX graph builder, consumes EvidenceEvent
 │   └── rca_agent.py             # LangGraph agent, emits RCAResult
-├── remediation/               # Person C
+├── remediation/               # Remediation
 │   ├── remediation_agent.py     # emits RemediationPlan
 │   ├── verification_agent.py    # replay + before/after metrics, emits VerificationResult
-│   └── app.py                    # Streamlit frontend, assembles IncidentReport
+│   └── app.py                    # Streamlit frontend, displays a finished IncidentReport
 └── evaluation/
-    └── benchmark_runner.py     # runs fault injection -> full pipeline -> scores results
+    └── benchmark_runner.py     # runs fault injection -> full pipeline -> scores results;
+                                  # also where Reasoning assembles the final IncidentReport
 ```
 
 ## What's deliberately NOT in scope
