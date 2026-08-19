@@ -102,6 +102,12 @@ class EvidenceNode(BaseModel):
     source_events: list[str]  # list of EvidenceEvent.event_id that support this node
     timestamp: datetime
     confidence: float = Field(ge=0.0, le=1.0)
+    detection_method: Optional[DetectionMethod] = None
+    # The (mode of the) source events' DetectionMethod, carried forward by
+    # the graph builder. NOT ground_truth_label — this is how the anomaly
+    # was statistically detected, a legitimate structural signal the RCA
+    # layer is allowed to see. It's what lets RootCauseHypothesis.failure_type
+    # below be inferred by a rule instead of guessed from prose.
 
 
 class EvidenceEdge(BaseModel):
@@ -130,6 +136,12 @@ class RootCauseHypothesis(BaseModel):
     explanation: str             # natural-language causal chain, written by the LLM
     confidence: float = Field(ge=0.0, le=1.0)
     supporting_node_ids: list[str]   # the causal path through the graph
+    failure_type: Optional[FailureType] = None
+    # Rule-derived (NOT ground_truth_label) best guess at the failure
+    # category, e.g. from EvidenceNode.detection_method. None when no
+    # detection method is available or none maps cleanly. This is what lets
+    # Person C's Remediation Agent choose a RemediationCategory
+    # deterministically instead of text-mining `explanation`.
 
 
 class RCAResult(BaseModel):

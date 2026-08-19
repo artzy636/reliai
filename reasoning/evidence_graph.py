@@ -26,6 +26,7 @@ by this module, not the shared contract:
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from datetime import timedelta
 from itertools import groupby
 from typing import Optional
@@ -33,7 +34,7 @@ from typing import Optional
 import networkx as nx
 
 from configs.settings import GRAPH, GraphSettings
-from schemas import EvidenceEdge, EvidenceEvent, EvidenceNode
+from schemas import DetectionMethod, EvidenceEdge, EvidenceEvent, EvidenceNode
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,12 @@ class EvidenceGraphBuilder:
 
     @staticmethod
     def _make_node(feature_name: Optional[str], cluster: list[EvidenceEvent]) -> EvidenceNode:
-        """Build a single EvidenceNode from a cluster of related events."""
+        """Build a single EvidenceNode from a cluster of related events.
+
+        detection_method is the cluster's most common EvidenceEvent.detection_method
+        (ties broken by first-encountered), carried forward as a structural signal —
+        never ground_truth_label, which per CONTRACT.md rule 4 must not reach this layer.
+        """
         base_timestamp = cluster[0].timestamp
         mean_offset = sum(
             (event.timestamp - base_timestamp for event in cluster), timedelta()
@@ -128,12 +134,14 @@ class EvidenceGraphBuilder:
         mean_timestamp = base_timestamp + mean_offset
         mean_confidence = sum(event.confidence for event in cluster) / len(cluster)
         node_type = f"feature_anomaly:{feature_name}" if feature_name else "pipeline_level_anomaly"
+        detection_method = Counter(event.detection_method for event in cluster).most_common(1)[0][0]
 
         node = EvidenceNode(
             node_type=node_type,
             source_events=[event.event_id for event in cluster],
             timestamp=mean_timestamp,
             confidence=mean_confidence,
+            detection_method=DetectionMethod(detection_method),
         )
         logger.debug(
             "Node %s (%s) built from %d event(s): %s",

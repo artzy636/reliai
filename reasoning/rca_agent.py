@@ -41,11 +41,47 @@ import networkx as nx
 from langgraph.graph import END, START, StateGraph
 
 from configs.settings import RCA, RCASettings
-from schemas import EvidenceEdge, EvidenceEvent, EvidenceNode, RCAResult, RootCauseHypothesis
+from schemas import (
+    DetectionMethod,
+    EvidenceEdge,
+    EvidenceEvent,
+    EvidenceNode,
+    FailureType,
+    RCAResult,
+    RootCauseHypothesis,
+)
 
 logger = logging.getLogger(__name__)
 
 LLMLike = Union[Callable[[str], str], Any]  # Any = duck-typed LangChain BaseChatModel
+
+# Deterministic detection_method -> failure_type inference, shared by both
+# agents below. NEVER derived from EvidenceEvent.ground_truth_label -- per
+# CONTRACT.md rule 4 that field must not reach the reasoning layer.
+# detection_method is a legitimate structural signal instead: distribution-
+# shift-style tests point at feature drift, point-anomaly detection points
+# at corrupted values, a rolling-accuracy drop points at label shift.
+# schema_mismatch/missing_values/duplicates have no implemented detector yet
+# (see detection/), so no DetectionMethod maps to them -- that's a real gap,
+# not an oversight here.
+_DETECTION_METHOD_TO_FAILURE_TYPE: dict[DetectionMethod, FailureType] = {
+    DetectionMethod.KS_TEST: FailureType.FEATURE_DRIFT,
+    DetectionMethod.PSI: FailureType.FEATURE_DRIFT,
+    DetectionMethod.JENSEN_SHANNON: FailureType.FEATURE_DRIFT,
+    DetectionMethod.ISOLATION_FOREST: FailureType.CORRUPTED_VALUES,
+    DetectionMethod.ROLLING_ACCURACY: FailureType.LABEL_SHIFT,
+}
+
+
+def _infer_failure_type(detection_method: Optional[DetectionMethod]) -> Optional[FailureType]:
+    """Map a detection method to a best-guess failure category via the
+    fixed rule table above. Returns None if no method is known or none of
+    the table's entries match -- callers must treat that as "unknown", not
+    silently default to a guess.
+    """
+    if detection_method is None:
+        return None
+    return _DETECTION_METHOD_TO_FAILURE_TYPE.get(DetectionMethod(detection_method))
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +343,7 @@ class RCAAgent:
                 explanation=explanation,
                 confidence=candidate.confidence,
                 supporting_node_ids=candidate.path_node_ids,
+                failure_type=_infer_failure_type(candidate.path_nodes[0].detection_method),
             )
             for rank, (candidate, explanation) in enumerate(ordered, start=1)
         ]
@@ -507,7 +544,8 @@ class NaiveRCAAgent:
         otherwise malformed rather than raising -- a malformed LLM
         response should degrade to fewer hypotheses, not crash the run.
         """
-        valid_event_ids = {event.event_id for event in events}
+        events_by_id = {event.event_id: event for event in events}
+        valid_event_ids = set(events_by_id)
         try:
             items = json.loads(_extract_json_array(raw))
         except (json.JSONDecodeError, ValueError):
@@ -537,6 +575,7 @@ class NaiveRCAAgent:
                     explanation=explanation,
                     confidence=confidence,
                     supporting_node_ids=event_ids,
+                    failure_type=_infer_failure_type(events_by_id[event_ids[0]].detection_method),
                 )
             )
         return hypotheses
