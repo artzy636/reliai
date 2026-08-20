@@ -5,6 +5,7 @@ numpy
 pandas
 scipy
 streamlit
+matplotlib
 langgraph
 langchain-core
 pytest

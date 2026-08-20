@@ -1,0 +1,65 @@
+{
+  "incident_id": "cb83343e-faf1-4c74-ad9c-307eac3fcb73",
+  "detected_at": "2026-08-20T05:01:27.359605Z",
+  "evidence_events": [
+    {
+      "event_id": "17d31b65-a0c9-48a8-8c95-1fe24c0aeb13",
+      "timestamp": "2026-08-20T05:01:27.359605Z",
+      "detection_method": "ks_test",
+      "feature_name": "feature_1",
+      "metric_value": 0.5783333333333334,
+      "threshold": 0.05,
+      "confidence": 1.0,
+      "description": "KS Test detected distribution shift (D=0.5783, p=0.000000)",
+      "ground_truth_label": "feature_drift"
+    }
+  ],
+  "evidence_nodes": [
+    {
+      "node_id": "6a987018-1f58-4594-b69f-423d06c6b933",
+      "node_type": "feature_anomaly:feature_1",
+      "source_events": [
+        "17d31b65-a0c9-48a8-8c95-1fe24c0aeb13"
+      ],
+      "timestamp": "2026-08-20T05:01:27.359605Z",
+      "confidence": 1.0,
+      "detection_method": "ks_test"
+    }
+  ],
+  "rca_result": {
+    "incident_id": "cb83343e-faf1-4c74-ad9c-307eac3fcb73",
+    "hypotheses": [
+      {
+        "rank": 1,
+        "node_id": "6a987018-1f58-4594-b69f-423d06c6b933",
+        "explanation": "Structural rank 1: agrees with the deterministic candidate ordering.",
+        "confidence": 1.0,
+        "supporting_node_ids": [
+          "6a987018-1f58-4594-b69f-423d06c6b933"
+        ],
+        "failure_type": "feature_drift"
+      }
+    ],
+    "causal_path_node_ids": [
+      "6a987018-1f58-4594-b69f-423d06c6b933"
+    ],
+    "generated_at": "2026-08-20T05:01:27.368657Z"
+  },
+  "remediation_plan": {
+    "incident_id": "cb83343e-faf1-4c74-ad9c-307eac3fcb73",
+    "category": "retrain",
+    "action_description": "Retrain the model on a recent data window that includes the drifted distribution, so the model absorbs the new feature distribution instead of continuing to score against a stale one.",
+    "expected_outcome": "Rolling prediction accuracy should improve by at least 2%, to be confirmed by replaying 500 held-out records against the remediated pipeline.",
+    "target_root_cause_node_id": "6a987018-1f58-4594-b69f-423d06c6b933"
+  },
+  "verification_result": {
+    "incident_id": "cb83343e-faf1-4c74-ad9c-307eac3fcb73",
+    "metric_name": "accuracy",
+    "value_before": 0.498,
+    "value_after": 0.524,
+    "improved": true,
+    "replay_sample_size": 500,
+    "notes": "RETRAIN: refit on 700 rows (reference + non-replay current data), re-scored on the same 500-row replay slice."
+  },
+  "ground_truth_label": "feature_drift"
+}
