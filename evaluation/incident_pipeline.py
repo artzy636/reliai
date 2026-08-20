@@ -55,7 +55,7 @@ def run_incident_pipeline(
     *,
     incident_id: Optional[str] = None,
     ground_truth_label: Optional[FailureType] = None,
-    injected_feature_name: Optional[str] = None,
+    injected_feature_name: Optional[str | list[str]] = None,
 ) -> IncidentReport:
     """Run one incident through detection, evidence-graph construction, RCA,
     remediation, and verification, and assemble a complete IncidentReport.
@@ -81,11 +81,13 @@ def run_incident_pipeline(
             affects the report's own ground_truth_label field and the
             EvidenceEvent(s) selected by ``injected_feature_name`` -- never
             shown to the LLM.
-        injected_feature_name: which EvidenceEvent.feature_name to stamp
-            with ``ground_truth_label`` (the column fault-injection actually
-            touched, or None for a pipeline-level fault). Ignored if
-            ground_truth_label is None. See the module docstring for why
-            this can't be inferred automatically.
+        injected_feature_name: which EvidenceEvent.feature_name(s) to stamp
+            with ``ground_truth_label`` (the column(s) fault-injection
+            actually touched, or None for a pipeline-level fault). Accepts
+            either a single feature name or a list, for incidents where
+            drift was injected into more than one genuinely-weighted
+            feature at once. Ignored if ground_truth_label is None. See the
+            module docstring for why this can't be inferred automatically.
 
     Returns:
         A complete IncidentReport, including evidence_nodes (from
@@ -114,8 +116,13 @@ def run_incident_pipeline(
             incident_id,
         )
     if ground_truth_label is not None:
+        injected_feature_names = (
+            set(injected_feature_name)
+            if isinstance(injected_feature_name, list)
+            else {injected_feature_name}
+        )
         evidence_events = [
-            _stamp_ground_truth(event, ground_truth_label, injected_feature_name)
+            _stamp_ground_truth(event, ground_truth_label, injected_feature_names)
             for event in evidence_events
         ]
 
@@ -161,13 +168,13 @@ def run_incident_pipeline(
 def _stamp_ground_truth(
     event: EvidenceEvent,
     ground_truth_label: FailureType,
-    injected_feature_name: Optional[str],
+    injected_feature_names: set[Optional[str]],
 ) -> EvidenceEvent:
     """Return a copy of `event` with ground_truth_label set, if its
-    feature_name matches the column the fault was actually injected into
-    (or both are None, for a pipeline-level fault) -- never a blanket
-    stamp, so an unrelated evidence event in a multi-event incident can't
-    be mistaken for the injected root cause."""
-    if event.feature_name != injected_feature_name:
+    feature_name is one of the column(s) the fault was actually injected
+    into (or is None and None is in the set, for a pipeline-level fault)
+    -- never a blanket stamp, so an unrelated evidence event in a
+    multi-event incident can't be mistaken for the injected root cause."""
+    if event.feature_name not in injected_feature_names:
         return event
     return event.model_copy(update={"ground_truth_label": ground_truth_label})

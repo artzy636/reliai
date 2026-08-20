@@ -27,7 +27,6 @@ from typing import Optional
 
 import matplotlib.pyplot as plt
 import networkx as nx
-import pandas as pd
 import streamlit as st
 from pydantic import ValidationError
 
@@ -47,6 +46,36 @@ from schemas import (
 logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="ReliAI — Incident Report", layout="wide")
+
+# ---------------------------------------------------------------------------
+# Shared matplotlib styling (dark theme, matching Streamlit's own default
+# dark background/text colors -- a plain white matplotlib figure clashes
+# with it, and st.pyplot doesn't inherit the app's theme automatically).
+# ---------------------------------------------------------------------------
+_DARK_BG = "#0e1117"
+_TEXT_COLOR = "#fafafa"
+_MUTED_TEXT_COLOR = "#c9ccd1"
+_EDGE_COLOR = "#9aa0a8"
+_NODE_COLOR = "#3498db"
+_HIGHLIGHT_COLOR = "#e74c3c"
+
+
+def _new_dark_figure(figsize: tuple[float, float]):
+    """A matplotlib Figure/Axes pre-styled to match Streamlit's dark theme."""
+    fig, ax = plt.subplots(figsize=figsize)
+    fig.patch.set_facecolor(_DARK_BG)
+    ax.set_facecolor(_DARK_BG)
+    return fig, ax
+
+
+def _style_axes_for_dark_theme(ax) -> None:
+    """Recolor ticks/labels/spines so they stay readable on _DARK_BG."""
+    ax.tick_params(colors=_TEXT_COLOR)
+    ax.xaxis.label.set_color(_TEXT_COLOR)
+    ax.yaxis.label.set_color(_TEXT_COLOR)
+    ax.title.set_color(_TEXT_COLOR)
+    for spine in ax.spines.values():
+        spine.set_color(_MUTED_TEXT_COLOR)
 
 
 # ---------------------------------------------------------------------------
@@ -155,28 +184,52 @@ def render_evidence_graph(
     for edge in edges:
         graph.add_edge(edge.source_node_id, edge.target_node_id, **edge.model_dump())
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = _new_dark_figure((8, 5))
     if graph.number_of_nodes() > 1:
-        layout = nx.spring_layout(graph, seed=42)
+        layout = nx.spring_layout(graph, seed=42, k=1.1)
     else:
         layout = {nodes[0].node_id: (0.0, 0.0)}
 
     node_colors = [
-        "#e74c3c" if node_id == highlight_node_id else "#3498db" for node_id in graph.nodes
+        _HIGHLIGHT_COLOR if node_id == highlight_node_id else _NODE_COLOR for node_id in graph.nodes
     ]
-    nx.draw_networkx_nodes(graph, layout, node_color=node_colors, node_size=1800, ax=ax)
+    # Long node_type labels (e.g. "feature_anomaly:feature_3") extend past
+    # the node circle; without extra margin, labels near the layout's edge
+    # get clipped by the figure boundary.
+    ax.margins(0.2)
+    nx.draw_networkx_nodes(
+        graph,
+        layout,
+        node_color=node_colors,
+        node_size=1000,
+        edgecolors=_DARK_BG,
+        linewidths=1.5,
+        ax=ax,
+    )
     nx.draw_networkx_labels(
         graph,
         layout,
         labels={n: graph.nodes[n]["node_type"] for n in graph.nodes},
         font_size=7,
+        font_color=_TEXT_COLOR,
         ax=ax,
     )
     nx.draw_networkx_edges(
-        graph, layout, arrows=True, ax=ax, connectionstyle="arc3,rad=0.1", node_size=1800
+        graph,
+        layout,
+        arrows=True,
+        arrowsize=16,
+        arrowstyle="-|>",
+        edge_color=_EDGE_COLOR,
+        width=1.4,
+        ax=ax,
+        connectionstyle="arc3,rad=0.15",
+        node_size=1000,
     )
     edge_labels = {(u, v): f"{d['confidence']:.2f}" for u, v, d in graph.edges(data=True)}
-    nx.draw_networkx_edge_labels(graph, layout, edge_labels=edge_labels, font_size=7, ax=ax)
+    nx.draw_networkx_edge_labels(
+        graph, layout, edge_labels=edge_labels, font_size=7, font_color=_MUTED_TEXT_COLOR, ax=ax
+    )
     ax.set_axis_off()
     st.pyplot(fig)
     plt.close(fig)
@@ -244,7 +297,10 @@ def render_remediation(plan: RemediationPlan) -> None:
 
 def render_verification(result: VerificationResult) -> None:
     """value_before vs value_after, whether it improved, as a metric delta
-    and a small bar chart."""
+    and a bar chart zoomed to the two values' range with value labels on
+    top of each bar -- a full 0-1 y-axis makes small-but-real accuracy
+    deltas (e.g. 0.498 -> 0.524) look like no change at all, since both
+    bars end up nearly the same height."""
     st.header("6. Verification Result")
     delta = result.value_after - result.value_before
     cols = st.columns(3)
@@ -254,10 +310,31 @@ def render_verification(result: VerificationResult) -> None:
 
     st.write("✅ Improved" if result.improved else "⚠️ Did not improve")
 
-    chart_df = pd.DataFrame(
-        {"value": [result.value_before, result.value_after]}, index=["before", "after"]
-    )
-    st.bar_chart(chart_df, sort=False)
+    values = [result.value_before, result.value_after]
+    bar_color = "#2ecc71" if result.improved else "#e67e22"
+    fig, ax = _new_dark_figure((4, 3.5))
+    bars = ax.bar(["before", "after"], values, color=["#7f8c8d", bar_color], width=0.5)
+
+    lo = max(0.0, min(values) - 0.05)
+    hi = min(1.0, max(values) + 0.05)
+    if hi - lo < 1e-6:
+        lo, hi = 0.0, 1.0
+    ax.set_ylim(lo, hi)
+    ax.set_ylabel(result.metric_name)
+    _style_axes_for_dark_theme(ax)
+
+    for bar, value in zip(bars, values):
+        ax.annotate(
+            f"{value:.4f}",
+            xy=(bar.get_x() + bar.get_width() / 2, value),
+            xytext=(0, 4),
+            textcoords="offset points",
+            ha="center",
+            fontsize=9,
+            color=_TEXT_COLOR,
+        )
+    st.pyplot(fig)
+    plt.close(fig)
 
     if result.notes:
         st.caption(result.notes)

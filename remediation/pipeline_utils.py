@@ -19,6 +19,7 @@ from typing import Optional
 
 import pandas as pd
 from sklearn.datasets import make_classification
+from sklearn.linear_model import LogisticRegression
 
 from detection.fault_injection import inject_feature_drift
 from evaluation.incident_pipeline import run_incident_pipeline
@@ -29,7 +30,11 @@ logger = logging.getLogger(__name__)
 
 FEATURE_COLUMNS = [f"feature_{i}" for i in range(5)]
 TARGET_COLUMN = "label"
-DRIFTED_FEATURE = "feature_1"
+N_DRIFTED_FEATURES = 3
+# How many of the model's most heavily-weighted features to inject drift
+# into. >1 so the evidence graph gets more than one EvidenceNode (and a
+# real edge between them) instead of a single lonely node -- see
+# generate_injected_drift_data()'s docstring.
 
 _ROOT_ID_RE = re.compile(r"^- root_node_id: (\S+)$", re.MULTILINE)
 
@@ -88,17 +93,52 @@ def get_llm(use_stub: bool = True) -> LLMLike:
     )
 
 
+def _select_weighted_features(
+    df: pd.DataFrame,
+    feature_columns: list[str],
+    target_column: str,
+    n: int,
+    random_state: int,
+) -> list[str]:
+    """Pick the `n` feature columns a LogisticRegression fit on `df` weighs
+    most heavily (largest |coefficient|) -- the same "does the model
+    actually depend on this feature" check remediation.verification_agent's
+    baseline model implicitly relies on. Drifting a feature the model
+    ignores would be undetectable-by-design in VerificationAgent's
+    before/after accuracy delta; this guarantees the opposite, and does so
+    dynamically so it stays correct across random "Run live" seeds, not
+    just the fixed sample-report seed.
+    """
+    model = LogisticRegression(max_iter=1000, random_state=random_state)
+    model.fit(df[feature_columns], df[target_column])
+    ranked = sorted(
+        zip(feature_columns, model.coef_[0]), key=lambda pair: abs(pair[1]), reverse=True
+    )
+    return [name for name, _coef in ranked[:n]]
+
+
 def generate_injected_drift_data(
     random_seed: Optional[int] = None,
-) -> tuple[pd.DataFrame, pd.DataFrame, FailureType]:
-    """Build a fresh reference/current dataframe pair with real feature drift.
+) -> tuple[pd.DataFrame, pd.DataFrame, FailureType, list[str]]:
+    """Build a fresh reference/current dataframe pair with real, multi-feature drift.
 
-    Same construction tests/test_incident_pipeline.py uses: a synthetic
-    classification dataset where feature_1 is a real decision-boundary
-    feature, then current_df is reference_df's exact rows with feature_1
-    shifted via detection.fault_injection.inject_feature_drift -- so every
-    other column stays byte-identical and DataAgent's KS test can only ever
-    flag the drifted column.
+    Same base construction tests/test_incident_pipeline.py uses, extended
+    to N_DRIFTED_FEATURES columns: a synthetic classification dataset, then
+    the N_DRIFTED_FEATURES columns a LogisticRegression fit on reference_df
+    actually weighs most heavily (see _select_weighted_features) are each
+    shifted via detection.fault_injection.inject_feature_drift, applied one
+    column at a time so current_df ends up as reference_df's exact rows
+    with exactly those columns shifted -- every other column (including
+    non-selected features and target_column) stays byte-identical, so
+    DataAgent's KS test can only ever flag the drifted columns.
+
+    Injecting drift into several genuinely-weighted features (instead of
+    just one) is what gives the evidence graph more than one EvidenceNode
+    to cluster, and a real edge between them: DataAgent.investigate()
+    timestamps each EvidenceEvent with wall-clock time as it scans columns
+    in sequence, so the drifted features' events land a few milliseconds
+    apart -- comfortably inside GRAPH.time_window_minutes -- without
+    needing to fabricate timestamps.
 
     Args:
         random_seed: seed for both the synthetic dataset and the drift
@@ -108,8 +148,11 @@ def generate_injected_drift_data(
             replaying the same one.
 
     Returns:
-        (reference_df, current_df, injected_label) -- injected_label is
-        always FailureType.FEATURE_DRIFT (what inject_feature_drift injects).
+        (reference_df, current_df, injected_label, drifted_features) --
+        injected_label is always FailureType.FEATURE_DRIFT, and
+        drifted_features is the list of column names actually shifted (so
+        callers can stamp ground_truth_label onto exactly those columns'
+        EvidenceEvents, and no others).
     """
     seed = random_seed if random_seed is not None else random.randint(0, 2**31 - 1)
     logger.info("Generating injected-drift dataset with seed=%d", seed)
@@ -126,10 +169,19 @@ def generate_injected_drift_data(
     reference_df = pd.DataFrame(X, columns=FEATURE_COLUMNS)
     reference_df[TARGET_COLUMN] = y
 
-    current_df, injected_label = inject_feature_drift(
-        reference_df, DRIFTED_FEATURE, shift_amount=3.0, random_seed=seed
+    drifted_features = _select_weighted_features(
+        reference_df, FEATURE_COLUMNS, TARGET_COLUMN, n=N_DRIFTED_FEATURES, random_state=seed
     )
-    return reference_df, current_df, injected_label
+    logger.info("Injecting drift into model-weighted features: %s", drifted_features)
+
+    current_df = reference_df
+    injected_label = FailureType.FEATURE_DRIFT
+    for feature in drifted_features:
+        current_df, injected_label = inject_feature_drift(
+            current_df, feature, shift_amount=3.0, random_seed=seed
+        )
+
+    return reference_df, current_df, injected_label, drifted_features
 
 
 def run_sample_incident(
@@ -148,7 +200,9 @@ def run_sample_incident(
     Returns:
         A complete IncidentReport.
     """
-    reference_df, current_df, injected_label = generate_injected_drift_data(random_seed)
+    reference_df, current_df, injected_label, drifted_features = generate_injected_drift_data(
+        random_seed
+    )
     return run_incident_pipeline(
         reference_df,
         current_df,
@@ -156,5 +210,5 @@ def run_sample_incident(
         llm=llm or get_llm(),
         incident_id=incident_id,
         ground_truth_label=injected_label,
-        injected_feature_name=DRIFTED_FEATURE,
+        injected_feature_name=drifted_features,
     )
