@@ -69,6 +69,102 @@ class ConfidenceLevel(str, Enum):
 
 
 # ---------------------------------------------------------------------------
+# Shared inference: DetectionMethod -> FailureType, and which FailureType
+# pairs are causally plausible. Lives here rather than in
+# reasoning/rca_agent.py or reasoning/evidence_graph.py because both need
+# the exact same rules, and per CONTRACT.md rule 1, shared contract logic
+# belongs in this file, imported everywhere, never redefined locally.
+# ---------------------------------------------------------------------------
+
+DETECTION_METHOD_TO_FAILURE_TYPE: dict[DetectionMethod, FailureType] = {
+    DetectionMethod.KS_TEST: FailureType.FEATURE_DRIFT,
+    DetectionMethod.PSI: FailureType.FEATURE_DRIFT,
+    DetectionMethod.JENSEN_SHANNON: FailureType.FEATURE_DRIFT,
+    DetectionMethod.ISOLATION_FOREST: FailureType.CORRUPTED_VALUES,
+    DetectionMethod.ROLLING_ACCURACY: FailureType.LABEL_SHIFT,
+    DetectionMethod.MISSING_VALUE_RATE: FailureType.MISSING_VALUES,
+    DetectionMethod.DUPLICATE_ROW_RATE: FailureType.DUPLICATES,
+    DetectionMethod.SCHEMA_CHECK: FailureType.SCHEMA_MISMATCH,
+}
+
+
+def infer_failure_type(detection_method: Optional[DetectionMethod]) -> Optional[FailureType]:
+    """Map a detection method to a best-guess failure category via the
+    fixed rule table above. Returns None if no method is known or none of
+    the table's entries match -- callers must treat that as "unknown", not
+    silently default to a guess. Never derived from
+    EvidenceEvent.ground_truth_label -- per CONTRACT.md rule 4, that field
+    must not reach the reasoning layer. detection_method is a legitimate
+    structural signal instead.
+    """
+    if detection_method is None:
+        return None
+    return DETECTION_METHOD_TO_FAILURE_TYPE.get(DetectionMethod(detection_method))
+
+
+# Which FailureType pairs are plausibly causally related, independent of
+# WHEN they were detected. reasoning/evidence_graph.py's edge-building used
+# to treat "detected close together in time" as sufficient evidence of
+# causality on its own -- which happens to be correct for a genuine
+# multi-stage cascade (a schema/corruption event upstream manifesting as
+# feature drift, which then shows up as a prediction/label shift), but
+# produces a false story the moment truly independent real-world failures
+# are detected in the same DataAgent run: DataAgent timestamps every
+# EvidenceEvent with wall-clock detection time, not real anomaly-onset
+# time, so *everything* found in one run is always "close together in
+# time" -- proximity alone cannot tell "these are connected" apart from
+# "we just happened to check every column in the same pass" (see
+# evaluation/real_data_incident.py's four-fault real-data run, which
+# time-proximity-only edges used to chain into a single, misleading root
+# cause). An edge now additionally requires the two nodes' inferred
+# FailureTypes to appear here (in either order), or to be identical -- a
+# small, auditable, hand-curated rule table, matching this project's "LLM
+# reasons, code/rules act" philosophy, not a second guess from the LLM.
+CAUSALLY_PLAUSIBLE_FAILURE_TYPE_PAIRS: set[frozenset] = {
+    frozenset({FailureType.CORRUPTED_VALUES, FailureType.FEATURE_DRIFT}),
+    frozenset({FailureType.FEATURE_DRIFT, FailureType.LABEL_SHIFT}),
+    frozenset({FailureType.CORRUPTED_VALUES, FailureType.LABEL_SHIFT}),
+    frozenset({FailureType.SCHEMA_MISMATCH, FailureType.MISSING_VALUES}),
+    frozenset({FailureType.SCHEMA_MISMATCH, FailureType.CORRUPTED_VALUES}),
+    frozenset({FailureType.SCHEMA_MISMATCH, FailureType.FEATURE_DRIFT}),
+    frozenset({FailureType.SCHEMA_MISMATCH, FailureType.LABEL_SHIFT}),
+}
+# Deliberately NOT included, because there is no well-known causal story:
+#   - DUPLICATES paired with anything else -- duplicate rows are a distinct
+#     batch/ETL failure mode with no standard causal link to a schema,
+#     drift, corruption, or label-shift incident.
+#   - MISSING_VALUES paired with FEATURE_DRIFT or LABEL_SHIFT -- an
+#     elevated null rate and a distributional shift in the non-null values
+#     are different statistical signatures; assuming one implies the other
+#     would itself be exactly the kind of unjustified link this table
+#     exists to prevent.
+# Extend this table only with a real, statable reason -- the same way the
+# entries above have one -- never just to make some scenario link up.
+
+
+def are_failure_types_causally_plausible(
+    a: Optional[FailureType], b: Optional[FailureType]
+) -> bool:
+    """Is there a real, hand-curated reason to believe a FailureType-`a`
+    node and a FailureType-`b` node could be causally related, independent
+    of how close together they were detected?
+
+    True when a == b (same failure category, different feature -- always
+    plausible, e.g. a multi-feature drift incident) or when the unordered
+    pair appears in CAUSALLY_PLAUSIBLE_FAILURE_TYPE_PAIRS. False whenever
+    either is None: an unmapped/unknown detection_method is evidence of
+    nothing, not evidence of implausibility, but the conservative default
+    here is still to NOT assert a link the graph has no real basis for --
+    same principle as the rest of this table.
+    """
+    if a is None or b is None:
+        return False
+    if a == b:
+        return True
+    return frozenset({a, b}) in CAUSALLY_PLAUSIBLE_FAILURE_TYPE_PAIRS
+
+
+# ---------------------------------------------------------------------------
 # DETECTION -> REASONING contract
 # ---------------------------------------------------------------------------
 

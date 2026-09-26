@@ -51,9 +51,9 @@ _FAILURE_TYPE_TO_CATEGORY: dict[FailureType, RemediationCategory] = {
 
 # Fallback when failure_type couldn't be inferred upstream (no detection
 # method available, or a detection method with no failure_type mapping --
-# see reasoning/rca_agent.py's _DETECTION_METHOD_TO_FAILURE_TYPE). DATA_FIX
-# is the least destructive option: it re-validates data rather than
-# retraining a model or rolling back a deploy on an unconfirmed guess.
+# see schemas.DETECTION_METHOD_TO_FAILURE_TYPE / infer_failure_type).
+# DATA_FIX is the least destructive option: it re-validates data rather
+# than retraining a model or rolling back a deploy on an unconfirmed guess.
 _DEFAULT_CATEGORY = RemediationCategory.DATA_FIX
 
 _ACTION_DESCRIPTIONS: dict[FailureType, str] = {

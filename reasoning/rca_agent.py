@@ -42,48 +42,26 @@ from langgraph.graph import END, START, StateGraph
 
 from configs.settings import RCA, RCASettings
 from schemas import (
-    DetectionMethod,
     EvidenceEdge,
     EvidenceEvent,
     EvidenceNode,
-    FailureType,
     RCAResult,
     RootCauseHypothesis,
+    infer_failure_type,
 )
 
 logger = logging.getLogger(__name__)
 
 LLMLike = Union[Callable[[str], str], Any]  # Any = duck-typed LangChain BaseChatModel
 
-# Deterministic detection_method -> failure_type inference, shared by both
-# agents below. NEVER derived from EvidenceEvent.ground_truth_label -- per
-# CONTRACT.md rule 4 that field must not reach the reasoning layer.
-# detection_method is a legitimate structural signal instead: distribution-
-# shift-style tests point at feature drift, point-anomaly detection points
-# at corrupted values, a rolling-accuracy drop points at label shift, a null-
-# rate/duplicate-rate/schema check points directly at its matching failure
-# type.
-_DETECTION_METHOD_TO_FAILURE_TYPE: dict[DetectionMethod, FailureType] = {
-    DetectionMethod.KS_TEST: FailureType.FEATURE_DRIFT,
-    DetectionMethod.PSI: FailureType.FEATURE_DRIFT,
-    DetectionMethod.JENSEN_SHANNON: FailureType.FEATURE_DRIFT,
-    DetectionMethod.ISOLATION_FOREST: FailureType.CORRUPTED_VALUES,
-    DetectionMethod.ROLLING_ACCURACY: FailureType.LABEL_SHIFT,
-    DetectionMethod.MISSING_VALUE_RATE: FailureType.MISSING_VALUES,
-    DetectionMethod.DUPLICATE_ROW_RATE: FailureType.DUPLICATES,
-    DetectionMethod.SCHEMA_CHECK: FailureType.SCHEMA_MISMATCH,
-}
-
-
-def _infer_failure_type(detection_method: Optional[DetectionMethod]) -> Optional[FailureType]:
-    """Map a detection method to a best-guess failure category via the
-    fixed rule table above. Returns None if no method is known or none of
-    the table's entries match -- callers must treat that as "unknown", not
-    silently default to a guess.
-    """
-    if detection_method is None:
-        return None
-    return _DETECTION_METHOD_TO_FAILURE_TYPE.get(DetectionMethod(detection_method))
+# Deterministic detection_method -> failure_type inference used by both
+# agents below now lives in schemas.infer_failure_type -- reasoning/
+# evidence_graph.py needs the exact same table (to gate which nodes'
+# edges are causally plausible, not just to label a hypothesis), so per
+# CONTRACT.md rule 1 it's shared contract logic, not something this module
+# owns privately. `_infer_failure_type` name kept as a thin local alias so
+# every call site below didn't need touching.
+_infer_failure_type = infer_failure_type
 
 
 # ---------------------------------------------------------------------------

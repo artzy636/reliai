@@ -19,8 +19,26 @@ by this module, not the shared contract:
     time, an edge is proposed with a confidence that linearly decays to 0
     over ``GRAPH.time_window_minutes`` and is scaled by the two nodes'
     confidence. Only edges strictly above ``GRAPH.min_edge_confidence``
-    are kept. Nothing here reads ``EvidenceEvent.ground_truth_label`` — per
-    CONTRACT.md rule 4, that field must never leak into reasoning logic.
+    AND whose two nodes' inferred FailureTypes are causally plausible (see
+    ``schemas.are_failure_types_causally_plausible``) are kept. Nothing
+    here reads ``EvidenceEvent.ground_truth_label`` — per CONTRACT.md rule
+    4, that field must never leak into reasoning logic.
+
+Time proximity alone used to be sufficient for an edge. That is correct
+for a genuine multi-stage cascade (the built-in benchmark scenarios: a
+schema/corruption event upstream manifesting as feature drift, which then
+shows up as a label/prediction shift) — but it is NOT sufficient in
+general, because detection.data_agent.DataAgent timestamps every
+EvidenceEvent with wall-clock *detection* time, not real anomaly-*onset*
+time. Every finding from one DataAgent.investigate() call is therefore
+always "close together in time", whether or not the underlying failures
+have anything to do with each other. Run against a real multi-fault
+dataset (evaluation/real_data_incident.py: a dropped column, drifted
+feature, elevated null rate, and duplicate rows, injected completely
+independently), the old time-proximity-only rule chained all four into
+one causal narrative — a real, reproduced false positive, not a
+hypothetical one. The plausibility check is what keeps proximity from
+being read as causation on its own.
 """
 
 from __future__ import annotations
@@ -34,7 +52,14 @@ from typing import Optional
 import networkx as nx
 
 from configs.settings import GRAPH, GraphSettings
-from schemas import DetectionMethod, EvidenceEdge, EvidenceEvent, EvidenceNode
+from schemas import (
+    DetectionMethod,
+    EvidenceEdge,
+    EvidenceEvent,
+    EvidenceNode,
+    are_failure_types_causally_plausible,
+    infer_failure_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,13 +178,20 @@ class EvidenceGraphBuilder:
         return node
 
     def _build_edges(self, nodes: list[EvidenceNode]) -> list[EvidenceEdge]:
-        """Propose precedence edges between nodes, filtered by confidence.
+        """Propose precedence edges between nodes, filtered by confidence
+        AND causal plausibility.
 
         For every pair of nodes where one strictly precedes the other in
         time (within ``time_window_minutes``), a "preceded" edge confidence
         is computed as a linear time-decay factor scaled by the mean of the
-        two nodes' own confidence, then kept only if it is strictly above
-        ``min_edge_confidence``.
+        two nodes' own confidence. The edge is kept only if that confidence
+        is strictly above ``min_edge_confidence`` AND
+        ``schemas.are_failure_types_causally_plausible`` says the two
+        nodes' inferred FailureTypes could plausibly be related at all --
+        time proximity by itself is necessary but not sufficient (see this
+        module's docstring for why: DataAgent's timestamps are detection
+        time, not incident-onset time, so two genuinely unrelated failures
+        found in the same run are always "close together").
         """
         window_minutes = self._settings.time_window_minutes
         min_confidence = self._settings.min_edge_confidence
@@ -167,6 +199,7 @@ class EvidenceGraphBuilder:
 
         edges: list[EvidenceEdge] = []
         for i, source in enumerate(ordered):
+            source_failure_type = infer_failure_type(source.detection_method)
             for target in ordered[i + 1:]:
                 delta_minutes = (target.timestamp - source.timestamp).total_seconds() / 60.0
                 if delta_minutes <= 0:
@@ -176,6 +209,20 @@ class EvidenceGraphBuilder:
                     # `ordered` is time-sorted, so every later target is at
                     # least this far away — nothing closer remains.
                     break
+
+                target_failure_type = infer_failure_type(target.detection_method)
+                if not are_failure_types_causally_plausible(
+                    source_failure_type, target_failure_type
+                ):
+                    logger.debug(
+                        "Not linking %s -> %s: %s and %s have no plausible causal "
+                        "relationship regardless of timing",
+                        source.node_id,
+                        target.node_id,
+                        source_failure_type,
+                        target_failure_type,
+                    )
+                    continue
 
                 decay = 1.0 - (delta_minutes / window_minutes)
                 confidence = decay * (source.confidence + target.confidence) / 2.0
