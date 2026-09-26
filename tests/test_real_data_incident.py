@@ -15,9 +15,9 @@ import pytest
 from evaluation.real_data_incident import (
     NUMERIC_FEATURE_COLUMNS,
     TARGET_COLUMN,
-    detection_showcase,
-    full_incident,
+    build_real_data_incident,
     load_adult_data,
+    run_real_data_incident,
 )
 from schemas import DetectionMethod, IncidentReport
 
@@ -28,7 +28,6 @@ def _make_adult_like_csv(tmp_path, n_rows: int = _N_ROWS) -> str:
     """Write a small CSV with the same columns/shape as the real Adult
     dataset (numeric features + a "<=50K"/">50K" income column) to a temp
     file, and return its path."""
-    rng_state = 0
     data = {}
     for i, column in enumerate(NUMERIC_FEATURE_COLUMNS):
         # Distinct, non-degenerate integer ranges per column so KS-test /
@@ -54,27 +53,42 @@ def test_load_adult_data_encodes_income_and_keeps_only_numeric_columns(tmp_path)
     assert set(df[TARGET_COLUMN].unique()) <= {0, 1}
 
 
-def test_detection_showcase_finds_multiple_distinct_failure_types(tmp_path):
+def test_build_real_data_incident_injects_all_four_failure_types(tmp_path):
     path = _make_adult_like_csv(tmp_path)
 
-    events = detection_showcase(path, random_seed=42)
+    reference_df, current_df = build_real_data_incident(path, random_seed=42)
 
-    assert len(events) > 0
-    detection_methods = {event.detection_method for event in events}
-    # The showcase deliberately injects four DIFFERENT failure types
-    # (drift, missing values, duplicates, schema mismatch) -- this is the
-    # whole point of the script, so guard it explicitly rather than just
-    # asserting "at least one event".
+    # duplicate rows: current_df is longer than reference_df's own half.
+    assert len(current_df) > len(reference_df)
+    # missing values: capital-loss is not in this fixture's numeric set --
+    # this script always injects into "capital-loss", which IS one of
+    # NUMERIC_FEATURE_COLUMNS, so it must be present and partially null.
+    assert current_df["capital-loss"].isna().any()
+    # schema mismatch: fnlwgt dropped entirely.
+    assert "fnlwgt" not in current_df.columns
+    assert "fnlwgt" in reference_df.columns
+
+
+def test_run_real_data_incident_detects_multiple_distinct_failure_types(tmp_path):
+    path = _make_adult_like_csv(tmp_path)
+
+    report = run_real_data_incident(path, random_seed=42, incident_id="test-incident")
+
+    detection_methods = {event.detection_method for event in report.evidence_events}
+    # All four injected failure types must show up as distinct
+    # DetectionMethods in the SAME report -- this is the whole point of
+    # collapsing the old detection-showcase/full-incident split into one
+    # incident once VerificationAgent could handle all four at once.
     assert DetectionMethod.KS_TEST in detection_methods
     assert DetectionMethod.MISSING_VALUE_RATE in detection_methods
     assert DetectionMethod.DUPLICATE_ROW_RATE in detection_methods
     assert DetectionMethod.SCHEMA_CHECK in detection_methods
 
 
-def test_full_incident_produces_a_complete_verified_report(tmp_path):
+def test_run_real_data_incident_produces_a_complete_verified_report(tmp_path):
     path = _make_adult_like_csv(tmp_path)
 
-    report = full_incident(path, random_seed=42, incident_id="test-incident")
+    report = run_real_data_incident(path, random_seed=42, incident_id="test-incident")
 
     assert isinstance(report, IncidentReport)
     assert report.incident_id == "test-incident"
@@ -91,11 +105,11 @@ def test_full_incident_produces_a_complete_verified_report(tmp_path):
     assert 0.0 <= report.verification_result.value_after <= 1.0
 
 
-def test_full_incident_is_reproducible(tmp_path):
+def test_run_real_data_incident_is_reproducible(tmp_path):
     path = _make_adult_like_csv(tmp_path)
 
-    report1 = full_incident(path, random_seed=7, incident_id="a")
-    report2 = full_incident(path, random_seed=7, incident_id="b")
+    report1 = run_real_data_incident(path, random_seed=7, incident_id="a")
+    report2 = run_real_data_incident(path, random_seed=7, incident_id="b")
 
     assert len(report1.evidence_events) == len(report2.evidence_events)
     assert report1.verification_result.value_before == report2.verification_result.value_before

@@ -178,3 +178,122 @@ def test_replay_sample_size_caps_to_available_rows():
     result = agent.verify(_plan(RemediationCategory.RETRAIN), reference_df, small_current_df, _TARGET_COLUMN)
 
     assert result.replay_sample_size == 50
+
+
+# ---------------------------------------------------------------------------
+# _prepare_features robustness: missing values and dropped columns.
+#
+# Both scenarios below used to crash verify() outright (LogisticRegression
+# raising ValueError: Input X contains NaN, or a bare KeyError for the
+# dropped column) regardless of which RemediationCategory was requested,
+# because value_before was scored against the raw replay slice before any
+# remediation branch ran. _prepare_features now reindexes to the reference
+# schema and imputes from reference-column means unconditionally, for
+# every category -- these tests are the regression coverage for that fix.
+# ---------------------------------------------------------------------------
+
+def _reference_and_current_with_missing_values() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """600 reference rows + 600 current rows from the same distribution,
+    with 20% of feature_2 (a non-dominant feature, so accuracy shouldn't
+    swing wildly either way) nulled out in current_df."""
+    from detection.fault_injection import inject_missing_values
+
+    full_df = _make_dataset(n_samples=1200, random_state=42)
+    reference_df = full_df.iloc[:600].reset_index(drop=True)
+    current_df = full_df.iloc[600:].reset_index(drop=True)
+
+    current_df, _ = inject_missing_values(current_df, "feature_2", fraction=0.2, random_seed=42)
+    return reference_df, current_df
+
+
+def _reference_and_current_missing_column() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """600 reference rows + 600 current rows from the same distribution,
+    with feature_2 dropped entirely from current_df (schema_mismatch)."""
+    full_df = _make_dataset(n_samples=1200, random_state=42)
+    reference_df = full_df.iloc[:600].reset_index(drop=True)
+    current_df = full_df.iloc[600:].reset_index(drop=True).drop(columns=["feature_2"])
+    return reference_df, current_df
+
+
+def test_verify_does_not_crash_on_missing_values_retrain():
+    reference_df, current_df = _reference_and_current_with_missing_values()
+    settings = VerificationSettings(replay_sample_size=150, improvement_threshold_pct=0.02)
+    agent = VerificationAgent(settings=settings)
+
+    result = agent.verify(_plan(RemediationCategory.RETRAIN), reference_df, current_df, _TARGET_COLUMN)
+
+    assert 0.0 <= result.value_before <= 1.0
+    assert 0.0 <= result.value_after <= 1.0
+
+
+def test_verify_does_not_crash_on_missing_values_data_fix():
+    reference_df, current_df = _reference_and_current_with_missing_values()
+    settings = VerificationSettings(replay_sample_size=150, improvement_threshold_pct=0.02)
+    agent = VerificationAgent(settings=settings)
+
+    result = agent.verify(_plan(RemediationCategory.DATA_FIX), reference_df, current_df, _TARGET_COLUMN)
+
+    assert 0.0 <= result.value_before <= 1.0
+    assert 0.0 <= result.value_after <= 1.0
+
+
+def test_verify_does_not_crash_on_dropped_column_retrain():
+    reference_df, current_df = _reference_and_current_missing_column()
+    assert "feature_2" not in current_df.columns
+    settings = VerificationSettings(replay_sample_size=150, improvement_threshold_pct=0.02)
+    agent = VerificationAgent(settings=settings)
+
+    result = agent.verify(_plan(RemediationCategory.RETRAIN), reference_df, current_df, _TARGET_COLUMN)
+
+    assert 0.0 <= result.value_before <= 1.0
+    assert 0.0 <= result.value_after <= 1.0
+
+
+def test_verify_does_not_crash_on_dropped_column_data_fix():
+    reference_df, current_df = _reference_and_current_missing_column()
+    settings = VerificationSettings(replay_sample_size=150, improvement_threshold_pct=0.02)
+    agent = VerificationAgent(settings=settings)
+
+    result = agent.verify(_plan(RemediationCategory.DATA_FIX), reference_df, current_df, _TARGET_COLUMN)
+
+    assert 0.0 <= result.value_before <= 1.0
+    assert 0.0 <= result.value_after <= 1.0
+
+
+def test_dropped_column_is_treated_as_fully_missing_not_a_crash():
+    """A column reindex introduces (because it's entirely absent from
+    current_df) must be filled from reference_df's mean, the same policy
+    as a partially-null column -- not left as NaN."""
+    from remediation.verification_agent import VerificationAgent as _VA
+
+    reference_df, current_df = _reference_and_current_missing_column()
+    feature_columns = [c for c in reference_df.columns if c != _TARGET_COLUMN]
+
+    prepared = _VA._prepare_features(current_df, reference_df, feature_columns)
+
+    assert "feature_2" in prepared.columns
+    assert prepared["feature_2"].isna().sum() == 0
+    assert (prepared["feature_2"] == reference_df["feature_2"].mean()).all()
+
+
+def test_retype_to_string_is_recovered_losslessly():
+    """A numeric column re-emitted as strings (the other schema_mismatch
+    mode) should be coerced straight back to its original numeric values,
+    not treated as missing -- pd.to_numeric on numeric-looking strings is
+    lossless."""
+    from remediation.verification_agent import VerificationAgent as _VA
+
+    reference_df, current_df = _reference_and_current_with_missing_values()
+    # Overwrite with a clean retype scenario instead of the missing-values one.
+    reference_df, current_df = _reference_and_drifted_current()
+    current_df = current_df.copy()
+    current_df["feature_2"] = current_df["feature_2"].astype(str)
+    feature_columns = [c for c in reference_df.columns if c != _TARGET_COLUMN]
+
+    prepared = _VA._prepare_features(current_df, reference_df, feature_columns)
+
+    pd.testing.assert_series_equal(
+        prepared["feature_2"].reset_index(drop=True),
+        pd.to_numeric(current_df["feature_2"]).reset_index(drop=True),
+        check_names=False,
+    )

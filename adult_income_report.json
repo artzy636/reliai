@@ -1,10 +1,32 @@
 {
-  "incident_id": "9f217767-fd63-4d45-a9cf-11a948178790",
-  "detected_at": "2026-09-26T12:47:07.874805Z",
+  "incident_id": "70587ede-1a8d-44d2-a14f-d67711c3eb37",
+  "detected_at": "2026-09-26T13:00:44.925488Z",
   "evidence_events": [
     {
-      "event_id": "38e28080-52cd-4cd4-9207-866ad89af81b",
-      "timestamp": "2026-09-26T12:47:07.874805Z",
+      "event_id": "46d32109-81d4-44df-abf4-e944ee0ee52c",
+      "timestamp": "2026-09-26T13:00:44.925488Z",
+      "detection_method": "ks_test",
+      "feature_name": "capital-loss",
+      "metric_value": null,
+      "threshold": 0.05,
+      "confidence": 1.0,
+      "description": "KS Test detected distribution shift (D=nan, p=nan)",
+      "ground_truth_label": null
+    },
+    {
+      "event_id": "acd62d85-f340-4dab-98f7-278d3adbf41a",
+      "timestamp": "2026-09-26T13:00:44.925984Z",
+      "detection_method": "missing_value_rate",
+      "feature_name": "capital-loss",
+      "metric_value": 0.18263038379927782,
+      "threshold": 0.1,
+      "confidence": 0.09181153755475312,
+      "description": "Missing-values detector flagged elevated null rate (null_rate=0.1826, threshold=0.1000)",
+      "ground_truth_label": null
+    },
+    {
+      "event_id": "637210ad-a5f1-47b1-b1f2-b1ef671aac0c",
+      "timestamp": "2026-09-26T13:00:44.929262Z",
       "detection_method": "ks_test",
       "feature_name": "hours-per-week",
       "metric_value": 0.6729595098847114,
@@ -14,8 +36,30 @@
       "ground_truth_label": null
     },
     {
-      "event_id": "56f6085e-a3ca-42ac-801e-6b2c88f778aa",
-      "timestamp": "2026-09-26T12:47:07.886466Z",
+      "event_id": "8f7ee874-85a9-45c7-abeb-5757c74bb99b",
+      "timestamp": "2026-09-26T13:00:44.945503Z",
+      "detection_method": "schema_check",
+      "feature_name": "fnlwgt",
+      "metric_value": 1.0,
+      "threshold": 0.0,
+      "confidence": 1.0,
+      "description": "Schema-mismatch detector flagged column 'fnlwgt' present in reference data but missing from current data",
+      "ground_truth_label": null
+    },
+    {
+      "event_id": "65dd42bf-2f9b-465c-a003-45cb6ce04650",
+      "timestamp": "2026-09-26T13:00:44.945673Z",
+      "detection_method": "schema_check",
+      "feature_name": "capital-loss",
+      "metric_value": 1.0,
+      "threshold": 0.0,
+      "confidence": 1.0,
+      "description": "Schema-mismatch detector flagged column 'capital-loss' dtype changed from int64 to float64",
+      "ground_truth_label": null
+    },
+    {
+      "event_id": "ba66b6df-22df-41ae-919d-da490d433188",
+      "timestamp": "2026-09-26T13:00:44.945784Z",
       "detection_method": "schema_check",
       "feature_name": "hours-per-week",
       "metric_value": 1.0,
@@ -25,73 +69,99 @@
       "ground_truth_label": null
     },
     {
-      "event_id": "19bdda49-bd6d-467c-930a-039092b0a2d7",
-      "timestamp": "2026-09-26T12:47:07.888994Z",
+      "event_id": "d0b61371-6308-4b49-8f6c-01b9cc4d3780",
+      "timestamp": "2026-09-26T13:00:44.948174Z",
       "detection_method": "duplicate_row_rate",
       "feature_name": null,
-      "metric_value": 0.09481442876819417,
+      "metric_value": 0.5738376205189294,
       "threshold": 0.05,
-      "confidence": 0.047173082913888595,
-      "description": "Duplicate-rows detector flagged elevated duplicate-row rate (duplicate_rate=0.0948, threshold=0.0500)",
+      "confidence": 0.551408021598873,
+      "description": "Duplicate-rows detector flagged elevated duplicate-row rate (duplicate_rate=0.5738, threshold=0.0500)",
       "ground_truth_label": null
     }
   ],
   "evidence_nodes": [
     {
-      "node_id": "5f64152c-ef05-403e-8bc5-b66f53f33112",
+      "node_id": "289f5ac0-7620-4ae4-a6e9-b26b893d3a69",
       "node_type": "pipeline_level_anomaly",
       "source_events": [
-        "19bdda49-bd6d-467c-930a-039092b0a2d7"
+        "d0b61371-6308-4b49-8f6c-01b9cc4d3780"
       ],
-      "timestamp": "2026-09-26T12:47:07.888994Z",
-      "confidence": 0.047173082913888595,
+      "timestamp": "2026-09-26T13:00:44.948174Z",
+      "confidence": 0.551408021598873,
       "detection_method": "duplicate_row_rate"
     },
     {
-      "node_id": "0cec392b-3d91-42f4-9cf0-68b2fa61ffb1",
+      "node_id": "801b5b9b-a032-4149-b21a-17a84df001cc",
+      "node_type": "feature_anomaly:capital-loss",
+      "source_events": [
+        "46d32109-81d4-44df-abf4-e944ee0ee52c",
+        "acd62d85-f340-4dab-98f7-278d3adbf41a",
+        "65dd42bf-2f9b-465c-a003-45cb6ce04650"
+      ],
+      "timestamp": "2026-09-26T13:00:44.932382Z",
+      "confidence": 0.697270512518251,
+      "detection_method": "ks_test"
+    },
+    {
+      "node_id": "b45700ba-1659-48fa-8edc-029cef850e4b",
+      "node_type": "feature_anomaly:fnlwgt",
+      "source_events": [
+        "8f7ee874-85a9-45c7-abeb-5757c74bb99b"
+      ],
+      "timestamp": "2026-09-26T13:00:44.945503Z",
+      "confidence": 1.0,
+      "detection_method": "schema_check"
+    },
+    {
+      "node_id": "1062c0e9-5978-46f4-b7b9-d1bdee2c9bb5",
       "node_type": "feature_anomaly:hours-per-week",
       "source_events": [
-        "38e28080-52cd-4cd4-9207-866ad89af81b",
-        "56f6085e-a3ca-42ac-801e-6b2c88f778aa"
+        "637210ad-a5f1-47b1-b1f2-b1ef671aac0c",
+        "ba66b6df-22df-41ae-919d-da490d433188"
       ],
-      "timestamp": "2026-09-26T12:47:07.880635Z",
+      "timestamp": "2026-09-26T13:00:44.937523Z",
       "confidence": 1.0,
       "detection_method": "ks_test"
     }
   ],
   "rca_result": {
-    "incident_id": "9f217767-fd63-4d45-a9cf-11a948178790",
+    "incident_id": "70587ede-1a8d-44d2-a14f-d67711c3eb37",
     "hypotheses": [
       {
         "rank": 1,
-        "node_id": "0cec392b-3d91-42f4-9cf0-68b2fa61ffb1",
+        "node_id": "801b5b9b-a032-4149-b21a-17a84df001cc",
         "explanation": "Structural rank 1: agrees with the deterministic candidate ordering.",
-        "confidence": 1.0,
+        "confidence": 0.697270512518251,
         "supporting_node_ids": [
-          "0cec392b-3d91-42f4-9cf0-68b2fa61ffb1",
-          "5f64152c-ef05-403e-8bc5-b66f53f33112"
+          "801b5b9b-a032-4149-b21a-17a84df001cc",
+          "1062c0e9-5978-46f4-b7b9-d1bdee2c9bb5",
+          "b45700ba-1659-48fa-8edc-029cef850e4b",
+          "289f5ac0-7620-4ae4-a6e9-b26b893d3a69"
         ],
         "failure_type": "feature_drift"
       }
     ],
     "causal_path_node_ids": [
-      "0cec392b-3d91-42f4-9cf0-68b2fa61ffb1",
-      "5f64152c-ef05-403e-8bc5-b66f53f33112"
+      "801b5b9b-a032-4149-b21a-17a84df001cc",
+      "1062c0e9-5978-46f4-b7b9-d1bdee2c9bb5",
+      "b45700ba-1659-48fa-8edc-029cef850e4b",
+      "289f5ac0-7620-4ae4-a6e9-b26b893d3a69"
     ],
-    "generated_at": "2026-09-26T12:47:07.895331Z"
+    "generated_at": "2026-09-26T13:00:44.957232Z"
   },
   "remediation_plan": {
-    "incident_id": "9f217767-fd63-4d45-a9cf-11a948178790",
+    "incident_id": "70587ede-1a8d-44d2-a14f-d67711c3eb37",
     "category": "retrain",
     "action_description": "Retrain the model on a recent data window that includes the drifted distribution, so the model absorbs the new feature distribution instead of continuing to score against a stale one.",
     "expected_outcome": "Rolling prediction accuracy should improve by at least 2%, to be confirmed by replaying 500 held-out records against the remediated pipeline.",
-    "target_root_cause_node_id": "0cec392b-3d91-42f4-9cf0-68b2fa61ffb1"
+    "target_root_cause_node_id": "801b5b9b-a032-4149-b21a-17a84df001cc"
   },
   "verification_result": {
-    "incident_id": "9f217767-fd63-4d45-a9cf-11a948178790",
+    "incident_id": "70587ede-1a8d-44d2-a14f-d67711c3eb37",
     "metric_name": "accuracy",
-    "value_before": 0.788,
-    "value_after": 0.806,
+    "value_before": 0.79,
+    "value_after": 0.804,
     "improved": false,
     "replay_sample_size": 500,
     "notes": "RETRAIN: refit on 50784 rows (reference + non-replay current data), re-scored on the same 500-row replay slice."
