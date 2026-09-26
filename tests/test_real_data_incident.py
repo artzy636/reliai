@@ -1,0 +1,102 @@
+"""
+Tests for evaluation/real_data_incident.py.
+
+Uses a small synthetic CSV shaped exactly like the real Adult dataset
+(same column names/dtypes) instead of the full ~48k-row data/adult_dataset.csv,
+so these tests stay fast and don't depend on that file's exact row count --
+only its schema (the module's own column list, NUMERIC_FEATURE_COLUMNS +
+TARGET_COLUMN) needs to match, which this fixture keeps in sync with by
+importing that same list rather than hardcoding a second copy of it.
+"""
+
+import pandas as pd
+import pytest
+
+from evaluation.real_data_incident import (
+    NUMERIC_FEATURE_COLUMNS,
+    TARGET_COLUMN,
+    detection_showcase,
+    full_incident,
+    load_adult_data,
+)
+from schemas import DetectionMethod, IncidentReport
+
+_N_ROWS = 200
+
+
+def _make_adult_like_csv(tmp_path, n_rows: int = _N_ROWS) -> str:
+    """Write a small CSV with the same columns/shape as the real Adult
+    dataset (numeric features + a "<=50K"/">50K" income column) to a temp
+    file, and return its path."""
+    rng_state = 0
+    data = {}
+    for i, column in enumerate(NUMERIC_FEATURE_COLUMNS):
+        # Distinct, non-degenerate integer ranges per column so KS-test /
+        # LogisticRegression have real variance to work with, not a
+        # constant column.
+        data[column] = [(row * (i + 1) + row % (i + 3)) % 97 + 1 for row in range(n_rows)]
+    # Alternate labels so both classes are present (LogisticRegression
+    # needs >1 class to fit).
+    data[TARGET_COLUMN] = ["<=50K" if row % 2 == 0 else ">50K" for row in range(n_rows)]
+
+    df = pd.DataFrame(data)
+    path = tmp_path / "adult_like.csv"
+    df.to_csv(path, index=False)
+    return str(path)
+
+
+def test_load_adult_data_encodes_income_and_keeps_only_numeric_columns(tmp_path):
+    path = _make_adult_like_csv(tmp_path)
+
+    df = load_adult_data(path)
+
+    assert set(df.columns) == set(NUMERIC_FEATURE_COLUMNS) | {TARGET_COLUMN}
+    assert set(df[TARGET_COLUMN].unique()) <= {0, 1}
+
+
+def test_detection_showcase_finds_multiple_distinct_failure_types(tmp_path):
+    path = _make_adult_like_csv(tmp_path)
+
+    events = detection_showcase(path, random_seed=42)
+
+    assert len(events) > 0
+    detection_methods = {event.detection_method for event in events}
+    # The showcase deliberately injects four DIFFERENT failure types
+    # (drift, missing values, duplicates, schema mismatch) -- this is the
+    # whole point of the script, so guard it explicitly rather than just
+    # asserting "at least one event".
+    assert DetectionMethod.KS_TEST in detection_methods
+    assert DetectionMethod.MISSING_VALUE_RATE in detection_methods
+    assert DetectionMethod.DUPLICATE_ROW_RATE in detection_methods
+    assert DetectionMethod.SCHEMA_CHECK in detection_methods
+
+
+def test_full_incident_produces_a_complete_verified_report(tmp_path):
+    path = _make_adult_like_csv(tmp_path)
+
+    report = full_incident(path, random_seed=42, incident_id="test-incident")
+
+    assert isinstance(report, IncidentReport)
+    assert report.incident_id == "test-incident"
+    assert len(report.evidence_events) > 0
+    assert len(report.rca_result.hypotheses) > 0
+    assert report.remediation_plan is not None
+    assert report.verification_result is not None
+    # value_before/value_after are real measured accuracies, not the
+    # ground_truth_label cheat-sheet -- this incident type isn't a
+    # benchmark run (see module docstring), so ground_truth_label must
+    # stay unset.
+    assert report.ground_truth_label is None
+    assert 0.0 <= report.verification_result.value_before <= 1.0
+    assert 0.0 <= report.verification_result.value_after <= 1.0
+
+
+def test_full_incident_is_reproducible(tmp_path):
+    path = _make_adult_like_csv(tmp_path)
+
+    report1 = full_incident(path, random_seed=7, incident_id="a")
+    report2 = full_incident(path, random_seed=7, incident_id="b")
+
+    assert len(report1.evidence_events) == len(report2.evidence_events)
+    assert report1.verification_result.value_before == report2.verification_result.value_before
+    assert report1.verification_result.value_after == report2.verification_result.value_after

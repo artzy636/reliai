@@ -1,0 +1,100 @@
+{
+  "incident_id": "9f217767-fd63-4d45-a9cf-11a948178790",
+  "detected_at": "2026-09-26T12:47:07.874805Z",
+  "evidence_events": [
+    {
+      "event_id": "38e28080-52cd-4cd4-9207-866ad89af81b",
+      "timestamp": "2026-09-26T12:47:07.874805Z",
+      "detection_method": "ks_test",
+      "feature_name": "hours-per-week",
+      "metric_value": 0.6729595098847114,
+      "threshold": 0.05,
+      "confidence": 1.0,
+      "description": "KS Test detected distribution shift (D=0.6730, p=0.000000)",
+      "ground_truth_label": null
+    },
+    {
+      "event_id": "56f6085e-a3ca-42ac-801e-6b2c88f778aa",
+      "timestamp": "2026-09-26T12:47:07.886466Z",
+      "detection_method": "schema_check",
+      "feature_name": "hours-per-week",
+      "metric_value": 1.0,
+      "threshold": 0.0,
+      "confidence": 1.0,
+      "description": "Schema-mismatch detector flagged column 'hours-per-week' dtype changed from int64 to float64",
+      "ground_truth_label": null
+    },
+    {
+      "event_id": "19bdda49-bd6d-467c-930a-039092b0a2d7",
+      "timestamp": "2026-09-26T12:47:07.888994Z",
+      "detection_method": "duplicate_row_rate",
+      "feature_name": null,
+      "metric_value": 0.09481442876819417,
+      "threshold": 0.05,
+      "confidence": 0.047173082913888595,
+      "description": "Duplicate-rows detector flagged elevated duplicate-row rate (duplicate_rate=0.0948, threshold=0.0500)",
+      "ground_truth_label": null
+    }
+  ],
+  "evidence_nodes": [
+    {
+      "node_id": "5f64152c-ef05-403e-8bc5-b66f53f33112",
+      "node_type": "pipeline_level_anomaly",
+      "source_events": [
+        "19bdda49-bd6d-467c-930a-039092b0a2d7"
+      ],
+      "timestamp": "2026-09-26T12:47:07.888994Z",
+      "confidence": 0.047173082913888595,
+      "detection_method": "duplicate_row_rate"
+    },
+    {
+      "node_id": "0cec392b-3d91-42f4-9cf0-68b2fa61ffb1",
+      "node_type": "feature_anomaly:hours-per-week",
+      "source_events": [
+        "38e28080-52cd-4cd4-9207-866ad89af81b",
+        "56f6085e-a3ca-42ac-801e-6b2c88f778aa"
+      ],
+      "timestamp": "2026-09-26T12:47:07.880635Z",
+      "confidence": 1.0,
+      "detection_method": "ks_test"
+    }
+  ],
+  "rca_result": {
+    "incident_id": "9f217767-fd63-4d45-a9cf-11a948178790",
+    "hypotheses": [
+      {
+        "rank": 1,
+        "node_id": "0cec392b-3d91-42f4-9cf0-68b2fa61ffb1",
+        "explanation": "Structural rank 1: agrees with the deterministic candidate ordering.",
+        "confidence": 1.0,
+        "supporting_node_ids": [
+          "0cec392b-3d91-42f4-9cf0-68b2fa61ffb1",
+          "5f64152c-ef05-403e-8bc5-b66f53f33112"
+        ],
+        "failure_type": "feature_drift"
+      }
+    ],
+    "causal_path_node_ids": [
+      "0cec392b-3d91-42f4-9cf0-68b2fa61ffb1",
+      "5f64152c-ef05-403e-8bc5-b66f53f33112"
+    ],
+    "generated_at": "2026-09-26T12:47:07.895331Z"
+  },
+  "remediation_plan": {
+    "incident_id": "9f217767-fd63-4d45-a9cf-11a948178790",
+    "category": "retrain",
+    "action_description": "Retrain the model on a recent data window that includes the drifted distribution, so the model absorbs the new feature distribution instead of continuing to score against a stale one.",
+    "expected_outcome": "Rolling prediction accuracy should improve by at least 2%, to be confirmed by replaying 500 held-out records against the remediated pipeline.",
+    "target_root_cause_node_id": "0cec392b-3d91-42f4-9cf0-68b2fa61ffb1"
+  },
+  "verification_result": {
+    "incident_id": "9f217767-fd63-4d45-a9cf-11a948178790",
+    "metric_name": "accuracy",
+    "value_before": 0.788,
+    "value_after": 0.806,
+    "improved": false,
+    "replay_sample_size": 500,
+    "notes": "RETRAIN: refit on 50784 rows (reference + non-replay current data), re-scored on the same 500-row replay slice."
+  },
+  "ground_truth_label": null
+}
