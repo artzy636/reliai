@@ -14,9 +14,16 @@ only job is column/pipeline iteration and collecting the results:
     multivariate/row-level rather than per-column, so it runs once over
     all shared numeric columns together rather than being looped per
     column like detect_distribution_shift.
+  * detect_label_shift        — once, pipeline-level (feature_name=None);
+    only runs when the caller passes target_column, since it's the only
+    detector in this package that needs supervised labels (on BOTH
+    reference and current) rather than feature columns alone. DataAgent
+    has no target-column concept otherwise -- see investigate()'s
+    target_column parameter docstring.
 """
 
 import logging
+from typing import Optional
 
 import pandas as pd
 
@@ -24,6 +31,7 @@ from detection.duplicate_rows_detector import detect_duplicate_rows
 from detection.isolation_forest_detector import detect_corrupted_values
 from detection.ks_detector import detect_distribution_shift
 from detection.missing_values_detector import detect_missing_values
+from detection.rolling_accuracy_detector import detect_label_shift
 from detection.schema_mismatch_detector import detect_schema_mismatch
 from schemas import EvidenceEvent
 
@@ -33,12 +41,13 @@ logger = logging.getLogger(__name__)
 class DataAgent:
     """Detection layer agent that localizes data-quality failures (feature
     drift, missing values, duplicate rows, schema mismatches, corrupted
-    values) to a feature or the pipeline as a whole."""
+    values, label shift) to a feature or the pipeline as a whole."""
 
     def investigate(
         self,
         reference_df: pd.DataFrame,
         current_df: pd.DataFrame,
+        target_column: Optional[str] = None,
     ) -> list[EvidenceEvent]:
         """Compare reference_df against current_df, running every available
         detector.
@@ -49,6 +58,17 @@ class DataAgent:
             Reference (e.g. training) data.
         current_df : pd.DataFrame
             Current (e.g. production) data.
+        target_column : str | None
+            Name of the binary label column, present in both reference_df
+            and current_df with real ground-truth values, if the caller
+            has one and wants label-shift detection. Every OTHER detector
+            in this package treats target_column like any other shared
+            numeric column (scanned for drift/missing-values/schema
+            issues same as any feature) -- this parameter only turns on
+            the additional rolling-accuracy check; it never excludes
+            target_column from the per-column loops below. Defaults to
+            None (no label-shift check), so existing callers that don't
+            have a target column keep working unchanged.
 
         Returns
         -------
@@ -127,5 +147,17 @@ class DataAgent:
                 corrupted_event.confidence,
             )
             events.append(corrupted_event)
+
+        if target_column is not None:
+            label_shift_event = detect_label_shift(reference_df, current_df, target_column)
+            if label_shift_event is None:
+                logger.info("No rolling-accuracy drop detected against target column '%s'", target_column)
+            else:
+                logger.info(
+                    "Rolling-accuracy drop detected against target column '%s' (confidence=%.3f)",
+                    target_column,
+                    label_shift_event.confidence,
+                )
+                events.append(label_shift_event)
 
         return events

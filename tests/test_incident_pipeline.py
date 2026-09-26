@@ -111,19 +111,24 @@ def test_run_incident_pipeline_produces_complete_report() -> None:
     assert report.verification_result is not None
     assert report.ground_truth_label == FailureType.FEATURE_DRIFT
 
-    # --- Detection: the drifted feature, plus a corroborating pipeline- --
-    # level isolation-forest finding (shifting an entire column by this
+    # --- Detection: the drifted feature, plus two corroborating pipeline- -
+    # level findings (shifting an entire, decision-relevant column by this
     # much also makes those rows look like multivariate outliers relative
-    # to reference -- a real, independent second signal about the same
-    # event, not noise; see test_detection_to_reasoning.py's docstring).
-    assert len(report.evidence_events) == 2
+    # to reference, AND breaks the model's learned decision boundary badly
+    # enough to crater its accuracy against current's unchanged labels --
+    # two real, independent second signals about the same event, not
+    # noise; see test_detection_to_reasoning.py's docstring and
+    # detection/rolling_accuracy_detector.py's docstring).
+    assert len(report.evidence_events) == 3
     drifted_event = next(
         event for event in report.evidence_events if event.feature_name == _DRIFTED_FEATURE
     )
     assert drifted_event.ground_truth_label == FailureType.FEATURE_DRIFT
 
     # --- Evidence graph: the drifted node, plus the linked pipeline- ------
-    # level node.
+    # level node (isolation-forest and rolling-accuracy findings cluster
+    # together -- CORRUPTED_VALUES and LABEL_SHIFT are causally plausible
+    # together, same as either is with FEATURE_DRIFT).
     assert len(report.evidence_nodes) == 2
     drifted_node = next(
         node for node in report.evidence_nodes

@@ -5,6 +5,7 @@ from detection.fault_injection import (
     inject_corrupted_values,
     inject_duplicate_rows,
     inject_feature_drift,
+    inject_label_shift,
     inject_missing_values,
     inject_schema_mismatch,
 )
@@ -184,6 +185,72 @@ def test_corrupted_values_injection_invalid_fraction_raises():
 
     with pytest.raises(ValueError):
         inject_corrupted_values(df, "age", fraction=1.5)
+
+
+def test_label_shift_injection():
+
+    df = pd.DataFrame({
+        "feature": list(range(100)),
+        "label": [1] * 20 + [0] * 80,  # 20% positive rate
+    })
+
+    injected_df, label = inject_label_shift(
+        df,
+        "label",
+        target_positive_rate=0.5,
+        random_seed=42,
+    )
+
+    assert len(injected_df) == len(df)
+    assert injected_df["label"].mean() == pytest.approx(0.5, abs=0.02)
+    assert label == FailureType.LABEL_SHIFT
+    # Original untouched.
+    assert df["label"].mean() == pytest.approx(0.2)
+
+
+def test_label_shift_injection_reproducibility():
+
+    df = pd.DataFrame({
+        "feature": list(range(100)),
+        "label": [1] * 20 + [0] * 80,
+    })
+
+    df1, _ = inject_label_shift(df, "label", target_positive_rate=0.5, random_seed=42)
+    df2, _ = inject_label_shift(df, "label", target_positive_rate=0.5, random_seed=42)
+
+    pd.testing.assert_frame_equal(df1, df2)
+
+
+def test_label_shift_injection_missing_column_raises():
+
+    df = pd.DataFrame({"label": [0, 1]})
+
+    with pytest.raises(ValueError):
+        inject_label_shift(df, "does_not_exist", target_positive_rate=0.5)
+
+
+def test_label_shift_injection_invalid_rate_raises():
+
+    df = pd.DataFrame({"label": [0, 1]})
+
+    with pytest.raises(ValueError):
+        inject_label_shift(df, "label", target_positive_rate=1.5)
+
+
+def test_label_shift_injection_non_binary_column_raises():
+
+    df = pd.DataFrame({"label": [0, 1, 2]})
+
+    with pytest.raises(ValueError):
+        inject_label_shift(df, "label", target_positive_rate=0.5)
+
+
+def test_label_shift_injection_single_class_column_raises():
+
+    df = pd.DataFrame({"label": [1, 1, 1]})
+
+    with pytest.raises(ValueError):
+        inject_label_shift(df, "label", target_positive_rate=0.5)
 
 
 def test_schema_mismatch_injection_drop():

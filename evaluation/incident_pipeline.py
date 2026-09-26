@@ -66,8 +66,10 @@ def run_incident_pipeline(
             Must share reference_df's columns, including target_column.
         target_column: name of the label column. Excluded from
             VerificationAgent's feature set the same way it already is
-            there; DataAgent has no target-column concept and scans it like
-            any other shared numeric column.
+            there. Passed through to DataAgent.investigate() too, so its
+            rolling-accuracy/label-shift check can run -- DataAgent still
+            has no other target-column concept, and scans target_column
+            like any other shared numeric column for every OTHER check.
         llm: a LangChain-style chat model (``.invoke(prompt) -> AIMessage``)
             or a plain ``Callable[[str], str]``, passed to RCAAgent. A stub
             in tests, a real provider client in production -- this function
@@ -105,7 +107,7 @@ def run_incident_pipeline(
     logger.info("Running incident pipeline for incident %s", incident_id)
 
     # 1. Detection: reference_df vs current_df -> raw EvidenceEvents.
-    evidence_events = DataAgent().investigate(reference_df, current_df)
+    evidence_events = DataAgent().investigate(reference_df, current_df, target_column=target_column)
     logger.info(
         "Incident %s: DataAgent found %d evidence event(s)", incident_id, len(evidence_events)
     )

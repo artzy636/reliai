@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
 
+from sklearn.datasets import make_classification
+
 from detection.data_agent import DataAgent
-from detection.fault_injection import inject_corrupted_values, inject_feature_drift
+from detection.fault_injection import inject_corrupted_values, inject_feature_drift, inject_label_shift
 from schemas import DetectionMethod
 
 
@@ -63,3 +65,56 @@ def test_investigate_detects_corrupted_values():
     )
     assert corrupted_event is not None
     assert corrupted_event.feature_name is None
+
+
+def test_investigate_without_target_column_skips_label_shift_check():
+    """No target_column passed -> DataAgent behaves exactly as it always
+    has, same as every existing caller that doesn't have one."""
+
+    np.random.seed(42)
+
+    reference_df = pd.DataFrame({
+        "age": np.random.normal(30, 5, 500),
+        "income": np.random.normal(50000, 5000, 500),
+    })
+    current_df = reference_df.copy()
+
+    agent = DataAgent()
+    events = agent.investigate(reference_df, current_df)
+
+    assert all(event.detection_method != DetectionMethod.ROLLING_ACCURACY for event in events)
+
+
+def test_investigate_detects_label_shift_when_target_column_given():
+
+    feature_columns = [f"feature_{i}" for i in range(5)]
+    target_column = "label"
+
+    X, y = make_classification(
+        n_samples=2000,
+        n_features=len(feature_columns),
+        n_informative=3,
+        n_redundant=0,
+        n_clusters_per_class=1,
+        class_sep=0.7,
+        weights=[0.9, 0.1],
+        random_state=42,
+    )
+    df = pd.DataFrame(X, columns=feature_columns)
+    df[target_column] = y
+    reference_df = df.iloc[:1000].reset_index(drop=True)
+    current_df = df.iloc[1000:].reset_index(drop=True)
+
+    shifted_current_df, _ = inject_label_shift(
+        current_df, target_column, target_positive_rate=0.6, random_seed=42
+    )
+
+    agent = DataAgent()
+    events = agent.investigate(reference_df, shifted_current_df, target_column=target_column)
+
+    label_shift_event = next(
+        (event for event in events if event.detection_method == DetectionMethod.ROLLING_ACCURACY),
+        None,
+    )
+    assert label_shift_event is not None
+    assert label_shift_event.feature_name is None

@@ -96,6 +96,85 @@ def inject_missing_values(
     return injected_df, FailureType.MISSING_VALUES
 
 
+def inject_label_shift(
+    df: pd.DataFrame,
+    column_name: str,
+    target_positive_rate: float,
+    random_seed: int = 42,
+) -> tuple[pd.DataFrame, FailureType]:
+    """
+    Inject label shift by resampling df's rows so that a binary (0/1)
+    target column's positive rate changes to target_positive_rate, while
+    every retained row keeps its own original feature values and label
+    exactly as they were.
+
+    This is a genuine prior-probability/label shift (P(y) changes)
+    rather than corrupted or noisy labels (which would change P(y|x) by
+    flipping individual rows' labels): nothing about any retained row's
+    feature-label relationship is touched, only how often each class is
+    drawn. A model whose accuracy isn't already near-perfect can still
+    show a real, large accuracy drop from this alone -- see
+    detection/rolling_accuracy_detector.py's docstring for why, and a
+    real measured example.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Original clean dataset.
+
+    column_name : str
+        Binary (0/1) target column whose class balance to shift.
+
+    target_positive_rate : float
+        Desired fraction (0-1) of rows where column_name == 1 after
+        resampling.
+
+    random_seed : int
+        Seed for reproducibility.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, FailureType]
+        A resampled dataset (same row count as df, drawn with replacement
+        from the positive/negative subsets to hit target_positive_rate,
+        then shuffled) and its ground-truth fault label.
+    """
+
+    if column_name not in df.columns:
+        raise ValueError(f"Column '{column_name}' does not exist.")
+
+    if not 0.0 <= target_positive_rate <= 1.0:
+        raise ValueError(
+            f"target_positive_rate must be between 0 and 1, got {target_positive_rate}."
+        )
+
+    unique_values = set(df[column_name].unique())
+    if not unique_values <= {0, 1}:
+        raise ValueError(
+            f"Column '{column_name}' must be binary (0/1), got values {sorted(unique_values)}."
+        )
+
+    positive_df = df[df[column_name] == 1]
+    negative_df = df[df[column_name] == 0]
+
+    if len(positive_df) == 0 or len(negative_df) == 0:
+        raise ValueError(
+            f"Column '{column_name}' must contain both classes to shift its balance."
+        )
+
+    n_total = len(df)
+    n_positive = int(round(n_total * target_positive_rate))
+    n_negative = n_total - n_positive
+
+    resampled_positive = positive_df.sample(n=n_positive, replace=True, random_state=random_seed)
+    resampled_negative = negative_df.sample(n=n_negative, replace=True, random_state=random_seed)
+
+    injected_df = pd.concat([resampled_positive, resampled_negative], ignore_index=True)
+    injected_df = injected_df.sample(frac=1.0, random_state=random_seed).reset_index(drop=True)
+
+    return injected_df, FailureType.LABEL_SHIFT
+
+
 def inject_duplicate_rows(
     df: pd.DataFrame,
     fraction: float,
