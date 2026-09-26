@@ -53,7 +53,7 @@ def test_load_adult_data_encodes_income_and_keeps_only_numeric_columns(tmp_path)
     assert set(df[TARGET_COLUMN].unique()) <= {0, 1}
 
 
-def test_build_real_data_incident_injects_all_five_failure_types(tmp_path):
+def test_build_real_data_incident_injects_all_six_failure_types(tmp_path):
     path = _make_adult_like_csv(tmp_path)
 
     reference_df, current_df = build_real_data_incident(path, random_seed=42)
@@ -70,6 +70,9 @@ def test_build_real_data_incident_injects_all_five_failure_types(tmp_path):
     # corrupted values: some age values are now far outside the fixture's
     # deterministic 1-97 range, from being scaled by corruption_multiplier.
     assert (current_df["age"] > 97).any()
+    # label shift: income's positive rate moved to ~60%, away from this
+    # fixture's original alternating 50/50 split.
+    assert current_df[TARGET_COLUMN].mean() == pytest.approx(0.6, abs=0.05)
 
 
 def test_run_real_data_incident_detects_multiple_distinct_failure_types(tmp_path):
@@ -78,10 +81,20 @@ def test_run_real_data_incident_detects_multiple_distinct_failure_types(tmp_path
     report = run_real_data_incident(path, random_seed=42, incident_id="test-incident")
 
     detection_methods = {event.detection_method for event in report.evidence_events}
-    # All five injected failure types must show up as distinct
+    # Five of the six injected failure types must show up as distinct
     # DetectionMethods in the SAME report -- this is the whole point of
     # collapsing the old detection-showcase/full-incident split into one
     # incident once VerificationAgent could handle all of them at once.
+    # ROLLING_ACCURACY (label shift) is deliberately not asserted here:
+    # this fixture's features are a fully deterministic function of row
+    # index, easy enough for LogisticRegression to fit near-perfectly
+    # regardless of class balance, so accuracy doesn't meaningfully drop
+    # from label shift alone on THIS data -- see
+    # detection/rolling_accuracy_detector.py's own docstring for why that
+    # only shows up on a classifier that isn't already near-perfect (real
+    # coverage: tests/test_rolling_accuracy_detector.py, and the real
+    # Adult-dataset run, both use less separable data for exactly this
+    # reason).
     assert DetectionMethod.KS_TEST in detection_methods
     assert DetectionMethod.MISSING_VALUE_RATE in detection_methods
     assert DetectionMethod.DUPLICATE_ROW_RATE in detection_methods

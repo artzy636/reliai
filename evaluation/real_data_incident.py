@@ -10,12 +10,13 @@ workclass, fnlwgt, education, education-num, marital-status, occupation,
 relationship, race, sex, capital-gain, capital-loss, hours-per-week,
 native-country, income).
 
-One incident, carrying all FIVE distinct, simultaneous injected failure
+One incident, carrying all SIX distinct, simultaneous injected failure
 types: feature drift (hours-per-week shifted), missing values
 (capital-loss partially nulled), duplicate rows (10% of rows
-re-appended), a schema mismatch (fnlwgt dropped entirely), and corrupted
+re-appended), a schema mismatch (fnlwgt dropped entirely), corrupted
 values (the same fraction of rows' age and education-num both scaled to
-extreme outliers). Earlier versions
+extreme outliers), and label shift (income's positive rate resampled
+from its real ~24% up to 60%). Earlier versions
 of this script split that into a detection-only showcase plus a
 separately-scoped "full" incident that left out missing values and
 schema mismatch, because remediation/verification_agent.py used to crash
@@ -24,13 +25,14 @@ dropped column never being reindexed before scoring). Both are fixed now
 -- see verification_agent.py's module docstring and _prepare_features --
 so there's no reason to keep the split: DataAgent, RCAAgent,
 RemediationAgent, and VerificationAgent all run against the same
-current_df, all five failures included, in a single real IncidentReport.
-Corrupted values (detection/isolation_forest_detector.py) is the newest
-of the five -- it's the only failure type whose real detector (isolation
-forest, multivariate/row-level) previously didn't exist at all; before
-it was added, CORRUPTED_VALUES only existed as hand-scripted fixture
-events in evaluation/benchmark_runner.py, never as something DataAgent
-could actually find in real data.
+current_df, all six failures included, in a single real IncidentReport.
+Corrupted values and label shift (detection/isolation_forest_detector.py,
+detection/rolling_accuracy_detector.py) are the newest of the six --
+they're the only two failure types whose real detectors previously
+didn't exist at all; before they were added, CORRUPTED_VALUES and
+LABEL_SHIFT only existed as hand-scripted fixture events in
+evaluation/benchmark_runner.py, never as something DataAgent could
+actually find in real data.
 
 Per verification_agent.py's own numeric-feature assumption, only the
 Adult dataset's six numeric columns (age, fnlwgt, education-num,
@@ -67,6 +69,7 @@ from detection.fault_injection import (
     inject_corrupted_values,
     inject_duplicate_rows,
     inject_feature_drift,
+    inject_label_shift,
     inject_missing_values,
     inject_schema_mismatch,
 )
@@ -139,9 +142,9 @@ def build_real_data_incident(
     random_seed: int = 42,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Split the real Adult dataset into a clean reference_df and an
-    injected-fault current_df carrying five distinct, simultaneous
+    injected-fault current_df carrying six distinct, simultaneous
     failure types: feature drift, missing values, duplicate rows, a
-    dropped column, and corrupted values.
+    dropped column, corrupted values, and label shift.
 
     Returns
     -------
@@ -179,6 +182,14 @@ def build_real_data_incident(
     current_df, _ = inject_corrupted_values(
         current_df, "education-num", fraction=0.08, corruption_multiplier=20.0, random_seed=random_seed
     )
+    # Label shift: income's real positive rate (~24%) resampled up to 60%.
+    # Verified directly against this dataset's own baseline classifier
+    # (detection/rolling_accuracy_detector.py's docstring): this alone
+    # drops measured accuracy from ~0.81 to ~0.61, a real, large effect,
+    # not a marginal one.
+    current_df, _ = inject_label_shift(
+        current_df, TARGET_COLUMN, target_positive_rate=0.6, random_seed=random_seed
+    )
 
     return reference_df, current_df
 
@@ -189,7 +200,7 @@ def run_real_data_incident(
     incident_id: Optional[str] = None,
 ) -> IncidentReport:
     """Run the complete four-layer pipeline against build_real_data_incident's
-    reference_df/current_df -- all five injected failures, one real
+    reference_df/current_df -- all six injected failures, one real
     IncidentReport, real measured before/after accuracy from
     VerificationAgent.
 
