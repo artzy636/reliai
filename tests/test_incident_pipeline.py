@@ -111,16 +111,24 @@ def test_run_incident_pipeline_produces_complete_report() -> None:
     assert report.verification_result is not None
     assert report.ground_truth_label == FailureType.FEATURE_DRIFT
 
-    # --- Detection: exactly one event, tied to the drifted feature. -------
-    assert len(report.evidence_events) == 1
-    drifted_event = report.evidence_events[0]
-    assert drifted_event.feature_name == _DRIFTED_FEATURE
+    # --- Detection: the drifted feature, plus a corroborating pipeline- --
+    # level isolation-forest finding (shifting an entire column by this
+    # much also makes those rows look like multivariate outliers relative
+    # to reference -- a real, independent second signal about the same
+    # event, not noise; see test_detection_to_reasoning.py's docstring).
+    assert len(report.evidence_events) == 2
+    drifted_event = next(
+        event for event in report.evidence_events if event.feature_name == _DRIFTED_FEATURE
+    )
     assert drifted_event.ground_truth_label == FailureType.FEATURE_DRIFT
 
-    # --- Evidence graph: exactly one node, wrapping that event. -----------
-    assert len(report.evidence_nodes) == 1
-    drifted_node = report.evidence_nodes[0]
-    assert drifted_node.node_type == f"feature_anomaly:{_DRIFTED_FEATURE}"
+    # --- Evidence graph: the drifted node, plus the linked pipeline- ------
+    # level node.
+    assert len(report.evidence_nodes) == 2
+    drifted_node = next(
+        node for node in report.evidence_nodes
+        if node.node_type == f"feature_anomaly:{_DRIFTED_FEATURE}"
+    )
     assert drifted_node.source_events == [drifted_event.event_id]
 
     # --- RCA: top hypothesis resolves to the drifted node. -----------------

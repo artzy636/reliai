@@ -20,6 +20,13 @@ class DetectionThresholds:
     psi_critical: float = 0.2
     jensen_shannon_threshold: float = 0.1
     isolation_forest_contamination: float = 0.05
+    # An IsolationForest fit with contamination=X will, by construction,
+    # flag ~X of ANY data scored against it as anomalous -- including
+    # data drawn from the same distribution as the reference it was fit
+    # on, purely from sampling noise. This margin is added on top of the
+    # contamination baseline before flagging, so that noise around the
+    # baseline doesn't itself produce a finding.
+    isolation_forest_anomaly_rate_margin: float = 0.05
     rolling_accuracy_drop_pct: float = 0.05   # flag if rolling accuracy drops >5%
     missing_value_rate: float = 0.1           # flag a column if its null rate exceeds 10%
     duplicate_row_rate: float = 0.05          # flag the pipeline if duplicate-row rate exceeds 5%

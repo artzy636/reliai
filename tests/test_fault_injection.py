@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 from detection.fault_injection import (
+    inject_corrupted_values,
     inject_duplicate_rows,
     inject_feature_drift,
     inject_missing_values,
@@ -123,6 +124,66 @@ def test_duplicate_rows_injection_invalid_fraction_raises():
 
     with pytest.raises(ValueError):
         inject_duplicate_rows(df, fraction=-0.1)
+
+
+def test_corrupted_values_injection():
+
+    df = pd.DataFrame({
+        "age": [20, 22, 24, 26, 28, 30, 32, 34, 36, 38],
+    })
+
+    injected_df, label = inject_corrupted_values(
+        df,
+        "age",
+        fraction=0.3,
+        corruption_multiplier=50.0,
+        random_seed=42,
+    )
+
+    changed = injected_df["age"] != df["age"]
+    assert changed.sum() == 3
+    # Every corrupted value is the original scaled up, not something
+    # unrelated.
+    assert (injected_df.loc[changed, "age"] == df.loc[changed, "age"] * 50.0).all()
+    assert label == FailureType.CORRUPTED_VALUES
+    # Original untouched.
+    assert df["age"].tolist() == [20, 22, 24, 26, 28, 30, 32, 34, 36, 38]
+
+
+def test_corrupted_values_injection_reproducibility():
+
+    df = pd.DataFrame({
+        "age": [20, 22, 24, 26, 28, 30, 32, 34, 36, 38],
+    })
+
+    df1, _ = inject_corrupted_values(df, "age", fraction=0.4, random_seed=42)
+    df2, _ = inject_corrupted_values(df, "age", fraction=0.4, random_seed=42)
+
+    pd.testing.assert_frame_equal(df1, df2)
+
+
+def test_corrupted_values_injection_missing_column_raises():
+
+    df = pd.DataFrame({"age": [20, 22]})
+
+    with pytest.raises(ValueError):
+        inject_corrupted_values(df, "does_not_exist", fraction=0.5)
+
+
+def test_corrupted_values_injection_non_numeric_column_raises():
+
+    df = pd.DataFrame({"region": ["north", "south"]})
+
+    with pytest.raises(ValueError):
+        inject_corrupted_values(df, "region", fraction=0.5)
+
+
+def test_corrupted_values_injection_invalid_fraction_raises():
+
+    df = pd.DataFrame({"age": [20, 22]})
+
+    with pytest.raises(ValueError):
+        inject_corrupted_values(df, "age", fraction=1.5)
 
 
 def test_schema_mismatch_injection_drop():

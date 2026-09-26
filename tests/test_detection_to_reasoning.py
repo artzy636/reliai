@@ -68,6 +68,17 @@ def test_data_agent_output_feeds_evidence_graph_and_rca_end_to_end() -> None:
     top-ranked hypothesis must trace back to the "income" node -- the only
     feature actually drifted; "age", "transaction_count", and the
     non-numeric "region" column must contribute no evidence at all.
+
+    Shifting income by this much doesn't just move its own distribution
+    (caught by the KS-test detector) -- it also makes the shifted rows
+    look like multivariate outliers relative to reference as a whole
+    (caught by the isolation-forest detector, pipeline-level since it's
+    not tied to one column). Both are real, independent, corroborating
+    signals about the SAME underlying event, which is exactly why
+    schemas.CAUSALLY_PLAUSIBLE_FAILURE_TYPE_PAIRS treats
+    (FEATURE_DRIFT, CORRUPTED_VALUES) as plausible together -- so the
+    evidence graph links them, and the root-cause chain now correctly
+    includes both nodes instead of just one.
     """
     reference_df = _reference_df()
     current_df, injected_fault = inject_feature_drift(
@@ -78,27 +89,35 @@ def test_data_agent_output_feeds_evidence_graph_and_rca_end_to_end() -> None:
     agent = DataAgent()
     events = agent.investigate(reference_df, current_df)
 
-    assert len(events) == 1
-    drifted_event = events[0]
-    assert drifted_event.feature_name == "income"
+    assert len(events) == 2
+    drifted_event = next(event for event in events if event.feature_name == "income")
     assert 0.0 < drifted_event.confidence <= 1.0
+    corrupted_event = next(event for event in events if event.feature_name is None)
+    assert 0.0 < corrupted_event.confidence <= 1.0
 
     # --- Step 2: real evidence graph, straight from DataAgent's output. --
     graph = EvidenceGraphBuilder().build(events)
 
-    assert graph.number_of_nodes() == 1
-    assert graph.number_of_edges() == 0
-    income_node_id = next(iter(graph.nodes))
-    assert graph.nodes[income_node_id]["node_type"] == "feature_anomaly:income"
-    assert set(graph.nodes[income_node_id]["source_events"]) == {
-        event.event_id for event in events
-    }
+    assert graph.number_of_nodes() == 2
+    assert graph.number_of_edges() == 1
+    income_node_id = next(
+        node_id for node_id, data in graph.nodes(data=True)
+        if data["node_type"] == "feature_anomaly:income"
+    )
+    pipeline_node_id = next(
+        node_id for node_id, data in graph.nodes(data=True)
+        if data["node_type"] == "pipeline_level_anomaly"
+    )
+    # The drift finding precedes the pipeline-level anomaly finding in
+    # DataAgent's own call order, so the edge points income -> pipeline.
+    assert (income_node_id, pipeline_node_id) in graph.edges
 
     # --- Step 3: real RCA agent, only the LLM call stubbed. --------------
     stub_response = (
         '[{"node_id": "%s", "explanation": '
-        '"feature_anomaly:income is the only evidence node in the graph, '
-        'so it is the root cause."}]' % income_node_id
+        '"feature_anomaly:income is the root of the only causal chain in '
+        'the graph, corroborated by a pipeline-level anomaly finding."}]'
+        % income_node_id
     )
     rca_agent = RCAAgent(llm=_StubChatModel(stub_response))
     result = rca_agent.analyze(graph, incident_id="incident-detection-to-reasoning-001")
@@ -109,5 +128,5 @@ def test_data_agent_output_feeds_evidence_graph_and_rca_end_to_end() -> None:
     assert top.rank == 1
     assert top.node_id == income_node_id
     assert graph.nodes[top.node_id]["node_type"] == "feature_anomaly:income"
-    assert top.supporting_node_ids == [income_node_id]
-    assert result.causal_path_node_ids == [income_node_id]
+    assert top.supporting_node_ids == [income_node_id, pipeline_node_id]
+    assert result.causal_path_node_ids == [income_node_id, pipeline_node_id]

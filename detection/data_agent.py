@@ -10,6 +10,10 @@ only job is column/pipeline iteration and collecting the results:
   * detect_schema_mismatch    — per reference column (catches columns
     missing from current, which shared-column iteration would skip).
   * detect_duplicate_rows     — once, pipeline-level (feature_name=None).
+  * detect_corrupted_values   — once, pipeline-level (feature_name=None);
+    multivariate/row-level rather than per-column, so it runs once over
+    all shared numeric columns together rather than being looped per
+    column like detect_distribution_shift.
 """
 
 import logging
@@ -17,6 +21,7 @@ import logging
 import pandas as pd
 
 from detection.duplicate_rows_detector import detect_duplicate_rows
+from detection.isolation_forest_detector import detect_corrupted_values
 from detection.ks_detector import detect_distribution_shift
 from detection.missing_values_detector import detect_missing_values
 from detection.schema_mismatch_detector import detect_schema_mismatch
@@ -27,8 +32,8 @@ logger = logging.getLogger(__name__)
 
 class DataAgent:
     """Detection layer agent that localizes data-quality failures (feature
-    drift, missing values, duplicate rows, schema mismatches) to a feature
-    or the pipeline as a whole."""
+    drift, missing values, duplicate rows, schema mismatches, corrupted
+    values) to a feature or the pipeline as a whole."""
 
     def investigate(
         self,
@@ -112,5 +117,15 @@ class DataAgent:
                 duplicate_event.confidence,
             )
             events.append(duplicate_event)
+
+        corrupted_event = detect_corrupted_values(reference_df, current_df)
+        if corrupted_event is None:
+            logger.info("No elevated corrupted-row rate detected")
+        else:
+            logger.info(
+                "Elevated corrupted-row rate detected (confidence=%.3f)",
+                corrupted_event.confidence,
+            )
+            events.append(corrupted_event)
 
         return events
