@@ -60,16 +60,18 @@ LLMLike = Union[Callable[[str], str], Any]  # Any = duck-typed LangChain BaseCha
 # CONTRACT.md rule 4 that field must not reach the reasoning layer.
 # detection_method is a legitimate structural signal instead: distribution-
 # shift-style tests point at feature drift, point-anomaly detection points
-# at corrupted values, a rolling-accuracy drop points at label shift.
-# schema_mismatch/missing_values/duplicates have no implemented detector yet
-# (see detection/), so no DetectionMethod maps to them -- that's a real gap,
-# not an oversight here.
+# at corrupted values, a rolling-accuracy drop points at label shift, a null-
+# rate/duplicate-rate/schema check points directly at its matching failure
+# type.
 _DETECTION_METHOD_TO_FAILURE_TYPE: dict[DetectionMethod, FailureType] = {
     DetectionMethod.KS_TEST: FailureType.FEATURE_DRIFT,
     DetectionMethod.PSI: FailureType.FEATURE_DRIFT,
     DetectionMethod.JENSEN_SHANNON: FailureType.FEATURE_DRIFT,
     DetectionMethod.ISOLATION_FOREST: FailureType.CORRUPTED_VALUES,
     DetectionMethod.ROLLING_ACCURACY: FailureType.LABEL_SHIFT,
+    DetectionMethod.MISSING_VALUE_RATE: FailureType.MISSING_VALUES,
+    DetectionMethod.DUPLICATE_ROW_RATE: FailureType.DUPLICATES,
+    DetectionMethod.SCHEMA_CHECK: FailureType.SCHEMA_MISMATCH,
 }
 
 

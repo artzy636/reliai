@@ -55,6 +55,9 @@ class DetectionMethod(str, Enum):
     JENSEN_SHANNON = "jensen_shannon_divergence"
     ISOLATION_FOREST = "isolation_forest"
     ROLLING_ACCURACY = "rolling_accuracy"
+    MISSING_VALUE_RATE = "missing_value_rate"
+    DUPLICATE_ROW_RATE = "duplicate_row_rate"
+    SCHEMA_CHECK = "schema_check"
 
 
 class ConfidenceLevel(str, Enum):

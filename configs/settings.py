@@ -21,6 +21,9 @@ class DetectionThresholds:
     jensen_shannon_threshold: float = 0.1
     isolation_forest_contamination: float = 0.05
     rolling_accuracy_drop_pct: float = 0.05   # flag if rolling accuracy drops >5%
+    missing_value_rate: float = 0.1           # flag a column if its null rate exceeds 10%
+    duplicate_row_rate: float = 0.05          # flag the pipeline if duplicate-row rate exceeds 5%
+    schema_mismatch_tolerance: float = 0.0    # flag any missing column or dtype change (zero tolerance)
 
 
 @dataclass(frozen=True)
