@@ -297,3 +297,89 @@ def test_retype_to_string_is_recovered_losslessly():
         pd.to_numeric(current_df["feature_2"]).reset_index(drop=True),
         check_names=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# _usable_feature_columns: a fully-unobserved column is excluded from the
+# feature set entirely, rather than imputed as a placeholder.
+#
+# Motivation (see remediation/verification_agent.py's module docstring): a
+# LogisticRegression fit with the dropped column mean-imputed to a constant
+# assigns it a coefficient of ~5.7e-07 -- mathematically inert -- but a
+# RandomForestClassifier given the same constant column assigns it
+# feature_importance_ ~0.38 purely from overfitting noise, and even scores
+# *higher* on the replay slice than the honest model trained without it.
+# That's not "harmless imputation", it's the model being actively misled by
+# a zero-variance column. These tests are the regression coverage for
+# excluding it instead.
+# ---------------------------------------------------------------------------
+
+def test_usable_feature_columns_excludes_column_absent_from_current():
+    reference_df, current_df = _reference_and_current_missing_column()
+    feature_columns = [c for c in reference_df.columns if c != _TARGET_COLUMN]
+
+    usable = VerificationAgent._usable_feature_columns(reference_df, current_df, feature_columns)
+
+    assert "feature_2" not in usable
+    assert set(usable) == set(feature_columns) - {"feature_2"}
+
+
+def test_usable_feature_columns_excludes_column_fully_null_but_present():
+    """A column that's present but 100% null is the same situation as one
+    that's entirely absent -- both get excluded, not imputed."""
+    reference_df, current_df = _reference_and_current_missing_column()
+    current_df = current_df.copy()
+    current_df["feature_2"] = float("nan")
+    feature_columns = [c for c in reference_df.columns if c != _TARGET_COLUMN]
+
+    usable = VerificationAgent._usable_feature_columns(reference_df, current_df, feature_columns)
+
+    assert "feature_2" not in usable
+
+
+def test_usable_feature_columns_keeps_partially_null_column():
+    """A column that's only partially null keeps real signal and must NOT
+    be excluded -- imputation (via _prepare_features), not exclusion, is
+    the right call there."""
+    reference_df, current_df = _reference_and_current_with_missing_values()
+    feature_columns = [c for c in reference_df.columns if c != _TARGET_COLUMN]
+
+    usable = VerificationAgent._usable_feature_columns(reference_df, current_df, feature_columns)
+
+    assert set(usable) == set(feature_columns)
+
+
+def test_verify_excludes_dropped_column_from_the_fitted_model():
+    """End-to-end: verify() on a dropped-column incident must fit/score
+    using one fewer feature than reference_df's column count, and say so
+    in the result's notes -- not silently impute a constant for it."""
+    reference_df, current_df = _reference_and_current_missing_column()
+    settings = VerificationSettings(replay_sample_size=150, improvement_threshold_pct=0.02)
+    agent = VerificationAgent(settings=settings)
+
+    result = agent.verify(_plan(RemediationCategory.RETRAIN), reference_df, current_df, _TARGET_COLUMN)
+
+    assert "feature_2" in result.notes
+    assert "Excluded" in result.notes
+
+
+def test_verify_does_not_exclude_partially_missing_column():
+    """A partially-null column (missing_values fault) must stay in the
+    feature set -- verify() should not report it as excluded."""
+    reference_df, current_df = _reference_and_current_with_missing_values()
+    settings = VerificationSettings(replay_sample_size=150, improvement_threshold_pct=0.02)
+    agent = VerificationAgent(settings=settings)
+
+    result = agent.verify(_plan(RemediationCategory.RETRAIN), reference_df, current_df, _TARGET_COLUMN)
+
+    assert "Excluded" not in result.notes
+
+
+def test_verify_raises_when_every_feature_column_is_excluded():
+    reference_df, current_df = _reference_and_drifted_current()
+    # Drop every feature column entirely from current_df -- nothing usable left.
+    current_df = current_df.drop(columns=_FEATURE_COLUMNS)
+    agent = VerificationAgent()
+
+    with pytest.raises(ValueError):
+        agent.verify(_plan(RemediationCategory.RETRAIN), reference_df, current_df, _TARGET_COLUMN)

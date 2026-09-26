@@ -27,8 +27,8 @@ Verification method (deliberately a real measurement, not a simulated one):
        - DATA_FIX: leave the model alone; drop duplicate rows from the
          replay slice, then re-score the *original* baseline model on the
          result. (Missing-value imputation used to live here too -- see
-         _prepare_features's docstring for why it moved to a universal,
-         always-applied step instead of a DATA_FIX-only one.)
+         "Partially- vs fully-missing features" below for why it moved to
+         a universal, always-applied step instead of a DATA_FIX-only one.)
      Other RemediationCategory values (ROLLBACK, CONFIG_CHANGE) have no
      data-driven analogue in this benchmark's scope, so verify() raises
      rather than fabricating a number for them.
@@ -39,26 +39,49 @@ Verification method (deliberately a real measurement, not a simulated one):
   5. `improved` is True only if value_after - value_before strictly
      exceeds configs.settings.VERIFICATION.improvement_threshold_pct.
 
-Missing / absent features (_prepare_features):
+Partially- vs fully-missing features (_usable_feature_columns / _prepare_features):
   A deployed model has to produce *some* prediction for a row even when a
-  feature is missing or an entire column has stopped arriving -- refusing
-  to score at all (which is what LogisticRegression.predict() does the
-  moment it sees a NaN) isn't a real option for a serving system, so this
-  agent doesn't treat it as one either. Every dataframe that reaches
-  _fit_model or _score is first run through _prepare_features, which:
-    - reindexes to reference_df's feature columns, so a column a
-      schema_mismatch fault removed entirely from current_df becomes a
-      100%-missing column instead of a KeyError -- from the model's point
-      of view a fully-missing numeric column and a partially-missing one
-      (missing_values) are the same problem, just at different rates, and
-      get exactly the same treatment;
-    - coerces every reference-numeric column and fills whatever is still
-      missing with that column's mean over reference_df.
-  This runs unconditionally, for every category, not only DATA_FIX --
-  RemediationCategory.DATA_FIX's own, still-real distinguishing effect is
-  dropping duplicate rows (see _apply_data_fix); RETRAIN's is training on
-  the shifted distribution. Neither is "the reason verify() doesn't crash"
-  anymore -- _prepare_features is.
+  feature is partially missing -- refusing to score at all (which is what
+  LogisticRegression.predict() does the moment it sees a NaN) isn't a real
+  option for a serving system, so this agent doesn't treat it as one
+  either. But there are two genuinely different situations hiding behind
+  "a feature has missing values", and they get different treatment:
+
+    - PARTIALLY missing (e.g. an elevated but non-total null rate from a
+      missing_values fault): the non-null rows still carry real signal, so
+      mean-imputing the gaps from reference_df is standard practice and
+      loses nothing that was recoverable. Handled by _prepare_features,
+      applied unconditionally to every fit/score call regardless of
+      remediation category.
+
+    - FULLY missing / entirely absent (a schema_mismatch fault that drops
+      a column outright, or any other cause that zeroes out a column's
+      variance): there is no real signal left to recover, and mean-filling
+      it produces a *constant* column. verify() therefore excludes any
+      such column from the feature set entirely, for both the baseline and
+      remediated model, rather than imputing a placeholder for it --
+      _usable_feature_columns is what does this, once, up front. This
+      isn't just tidiness: a constant column is mathematically inert for a
+      linear model (it can only shift the bias term, verified empirically
+      -- a LogisticRegression fit gave it a ~5.7e-07 coefficient), but it
+      is NOT inert for a model that can exploit spurious feature
+      interactions. A RandomForestClassifier fit on the same imputed
+      column assigned it ~0.38 feature_importance_ purely from
+      overfitting noise (a zero-variance column has no real information
+      to be "important" about) -- and scored *higher* on the replay slice
+      than the honest model trained without it, i.e. the constant column
+      actively misled it rather than merely doing nothing. Excluding a
+      zero-variance feature outright is the standard move regardless of
+      model family (the same thing sklearn.feature_selection.
+      VarianceThreshold does), not a fix specific to this benchmark or to
+      LogisticRegression.
+
+  This all runs unconditionally, for every remediation category, not only
+  DATA_FIX -- RemediationCategory.DATA_FIX's own, still-real distinguishing
+  effect is dropping duplicate rows (see _apply_data_fix); RETRAIN's is
+  training on the shifted distribution. Neither is "the reason verify()
+  doesn't crash or get misled" anymore -- _usable_feature_columns and
+  _prepare_features are.
 
 Assumes reference_df / current_df contain target_column plus feature
 columns that are numeric *in reference_df* (a column reference_df itself
@@ -149,7 +172,24 @@ class VerificationAgent:
         if target_column not in current_df.columns:
             raise ValueError(f"target_column {target_column!r} not found in current_df.")
 
-        feature_columns = [c for c in reference_df.columns if c != target_column]
+        declared_feature_columns = [c for c in reference_df.columns if c != target_column]
+        feature_columns = self._usable_feature_columns(
+            reference_df, current_df, declared_feature_columns
+        )
+        excluded_columns = [c for c in declared_feature_columns if c not in feature_columns]
+        if excluded_columns:
+            logger.warning(
+                "Excluding %s from verification's feature set: entirely unobserved "
+                "in reference_df or current_df, so every row would get the same "
+                "imputed value -- see _usable_feature_columns' docstring for why "
+                "that's excluded rather than filled.",
+                excluded_columns,
+            )
+        if not feature_columns:
+            raise ValueError(
+                "No usable feature columns remain after excluding entirely-unobserved "
+                f"ones ({excluded_columns!r}); nothing left to fit or score against."
+            )
 
         baseline_model = self._fit_model(reference_df, reference_df, feature_columns, target_column)
 
@@ -179,6 +219,7 @@ class VerificationAgent:
             notes = (
                 f"RETRAIN: refit on {len(retrain_df)} rows (reference + non-replay "
                 f"current data), re-scored on the same {replay_size}-row replay slice."
+                + self._exclusion_note(excluded_columns)
             )
         elif remediation_plan.category == RemediationCategory.DATA_FIX:
             corrected_replay_df = self._apply_data_fix(replay_df)
@@ -187,9 +228,10 @@ class VerificationAgent:
             )
             notes = (
                 f"DATA_FIX: dropped duplicate rows from the {replay_size}-row replay "
-                "slice (missing/absent-column values are handled the same way for "
-                "every category -- see _prepare_features), then re-scored the "
-                "original baseline model."
+                "slice (partially-missing values are imputed the same way for every "
+                "category -- see _prepare_features), then re-scored the original "
+                "baseline model."
+                + self._exclusion_note(excluded_columns)
             )
         else:
             raise ValueError(
@@ -215,6 +257,47 @@ class VerificationAgent:
             improved=improved,
             replay_sample_size=replay_size,
             notes=notes,
+        )
+
+    @staticmethod
+    def _usable_feature_columns(
+        reference_df: pd.DataFrame, current_df: pd.DataFrame, feature_columns: list[str]
+    ) -> list[str]:
+        """`feature_columns` minus any column that's entirely unobserved
+        (absent, or present but 100% null) in reference_df or current_df.
+
+        Such a column has zero variance in at least one of the two
+        dataframes a fit/score pair actually uses -- there is no real
+        signal to train on or to score against, only a placeholder that
+        would be identical for every row. See this module's docstring for
+        why that gets excluded outright rather than imputed: it's
+        mathematically inert for a linear model but not safe in general
+        (empirically, a RandomForestClassifier found spurious "importance"
+        in exactly this kind of constant column).
+
+        A column that's only partially null in either dataframe is left
+        alone here -- it keeps real signal from its non-null rows, and
+        _prepare_features' ordinary mean-fill is the right call for it.
+        """
+        def _has_signal(df: pd.DataFrame, column: str) -> bool:
+            return column in df.columns and df[column].notna().any()
+
+        return [
+            column
+            for column in feature_columns
+            if _has_signal(reference_df, column) and _has_signal(current_df, column)
+        ]
+
+    @staticmethod
+    def _exclusion_note(excluded_columns: list[str]) -> str:
+        """Human-readable suffix for VerificationResult.notes when one or
+        more feature columns were excluded as entirely unobserved (see
+        _usable_feature_columns) -- empty string when none were."""
+        if not excluded_columns:
+            return ""
+        return (
+            f" Excluded from the feature set entirely (zero variance, no signal "
+            f"to impute): {excluded_columns}."
         )
 
     @staticmethod
