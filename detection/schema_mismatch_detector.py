@@ -33,7 +33,29 @@ def detect_schema_mismatch(
     -------
     EvidenceEvent | None
         Returns an EvidenceEvent if feature_name is missing from current,
-        or its dtype changed relative to reference, otherwise returns None.
+        or its dtype *kind* changed relative to reference (e.g. numeric
+        became text, or text became numeric), otherwise returns None.
+
+    Notes
+    -----
+    A numeric-to-numeric dtype change (e.g. int64 -> float64) is NOT
+    treated as a schema mismatch. Pandas silently upcasts an integer
+    column to float the moment it gains a NaN or is combined with a
+    float value in arithmetic -- both completely routine, and not this
+    detector's concern (a NaN-driven upcast is missing_values_detector.py's
+    job; the values themselves are still numeric and comparable either
+    way). Flagging that upcast as a schema mismatch produced spurious
+    SCHEMA_CHECK findings on columns with no actual structural problem --
+    confirmed on the real Adult-dataset incident
+    (evaluation/real_data_incident.py): injecting a plain float shift into
+    the int64 hours-per-week column upcast it to float64, and injecting
+    missing values into capital-loss did the same, so both picked up a
+    schema-mismatch finding that had nothing to do with the schema and
+    everything to do with numpy's type-promotion rules. A schema
+    mismatch, in the sense this detector should catch, is a change in
+    *kind* (numeric vs. text vs. boolean, etc.) -- an incompatibility a
+    downstream numeric pipeline would actually choke on -- not a
+    same-kind width/precision change.
     """
 
     threshold = DETECTION.schema_mismatch_tolerance
@@ -56,6 +78,11 @@ def detect_schema_mismatch(
     current_dtype = current[feature_name].dtype
 
     if reference_dtype == current_dtype:
+        return None
+
+    if pd.api.types.is_numeric_dtype(reference_dtype) and pd.api.types.is_numeric_dtype(current_dtype):
+        # Same kind (numeric), different width/precision -- a benign
+        # promotion, not a schema mismatch. See the docstring above.
         return None
 
     return EvidenceEvent(
