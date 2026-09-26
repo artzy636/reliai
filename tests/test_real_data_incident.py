@@ -53,7 +53,7 @@ def test_load_adult_data_encodes_income_and_keeps_only_numeric_columns(tmp_path)
     assert set(df[TARGET_COLUMN].unique()) <= {0, 1}
 
 
-def test_build_real_data_incident_injects_all_four_failure_types(tmp_path):
+def test_build_real_data_incident_injects_all_five_failure_types(tmp_path):
     path = _make_adult_like_csv(tmp_path)
 
     reference_df, current_df = build_real_data_incident(path, random_seed=42)
@@ -67,6 +67,9 @@ def test_build_real_data_incident_injects_all_four_failure_types(tmp_path):
     # schema mismatch: fnlwgt dropped entirely.
     assert "fnlwgt" not in current_df.columns
     assert "fnlwgt" in reference_df.columns
+    # corrupted values: some age values are now far outside the fixture's
+    # deterministic 1-97 range, from being scaled by corruption_multiplier.
+    assert (current_df["age"] > 97).any()
 
 
 def test_run_real_data_incident_detects_multiple_distinct_failure_types(tmp_path):
@@ -75,14 +78,15 @@ def test_run_real_data_incident_detects_multiple_distinct_failure_types(tmp_path
     report = run_real_data_incident(path, random_seed=42, incident_id="test-incident")
 
     detection_methods = {event.detection_method for event in report.evidence_events}
-    # All four injected failure types must show up as distinct
+    # All five injected failure types must show up as distinct
     # DetectionMethods in the SAME report -- this is the whole point of
     # collapsing the old detection-showcase/full-incident split into one
-    # incident once VerificationAgent could handle all four at once.
+    # incident once VerificationAgent could handle all of them at once.
     assert DetectionMethod.KS_TEST in detection_methods
     assert DetectionMethod.MISSING_VALUE_RATE in detection_methods
     assert DetectionMethod.DUPLICATE_ROW_RATE in detection_methods
     assert DetectionMethod.SCHEMA_CHECK in detection_methods
+    assert DetectionMethod.ISOLATION_FOREST in detection_methods
 
 
 def test_run_real_data_incident_produces_a_complete_verified_report(tmp_path):

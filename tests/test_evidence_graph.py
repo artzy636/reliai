@@ -88,6 +88,77 @@ def test_causal_chain_links_earlier_node_to_later_node():
     assert not graph.has_edge(node_c.node_id, node_b.node_id)
 
 
+def test_pipeline_level_events_with_implausible_failure_types_do_not_cluster():
+    """Two pipeline-level (feature_name=None) events, close together in
+    time, whose inferred failure types are NOT causally plausible together
+    (duplicates vs. corrupted values) must become two separate nodes, not
+    one -- otherwise one detection_method silently wins _make_node's
+    Counter.most_common(1) tie-break and the other's finding is discarded
+    entirely. Reproduced for real on the Adult-dataset incident: a genuine
+    duplicate-row-rate finding and a genuine isolation-forest finding from
+    the same DataAgent.investigate() call used to merge into one node
+    labeled "duplicates" only, making the corrupted-values finding
+    invisible in the final RCA hypotheses."""
+    e1 = EvidenceEvent(
+        timestamp=BASE,
+        detection_method=DetectionMethod.DUPLICATE_ROW_RATE,
+        feature_name=None,
+        metric_value=0.6,
+        threshold=0.05,
+        confidence=0.6,
+        description="duplicate rows",
+    )
+    e2 = EvidenceEvent(
+        timestamp=BASE + timedelta(minutes=1),
+        detection_method=DetectionMethod.ISOLATION_FOREST,
+        feature_name=None,
+        metric_value=0.2,
+        threshold=0.1,
+        confidence=0.2,
+        description="corrupted rows",
+    )
+
+    builder = EvidenceGraphBuilder()
+    builder.build([e1, e2])
+    nodes = builder.get_nodes()
+
+    assert len(nodes) == 2
+    methods = {node.detection_method for node in nodes}
+    assert methods == {DetectionMethod.DUPLICATE_ROW_RATE, DetectionMethod.ISOLATION_FOREST}
+
+
+def test_pipeline_level_events_with_plausible_failure_types_still_cluster():
+    """Contrast case: two pipeline-level events whose inferred failure
+    types ARE causally plausible together (corrupted values + feature
+    drift) still cluster into one node, same as before this fix -- the
+    plausibility check only splits implausible pairs, it doesn't turn off
+    clustering altogether."""
+    e1 = EvidenceEvent(
+        timestamp=BASE,
+        detection_method=DetectionMethod.ISOLATION_FOREST,
+        feature_name=None,
+        metric_value=0.2,
+        threshold=0.1,
+        confidence=0.2,
+        description="corrupted rows",
+    )
+    e2 = EvidenceEvent(
+        timestamp=BASE + timedelta(minutes=1),
+        detection_method=DetectionMethod.KS_TEST,
+        feature_name=None,
+        metric_value=0.5,
+        threshold=0.05,
+        confidence=0.9,
+        description="pipeline-level drift-like signal",
+    )
+
+    builder = EvidenceGraphBuilder()
+    builder.build([e1, e2])
+    nodes = builder.get_nodes()
+
+    assert len(nodes) == 1
+
+
 def test_edge_dropped_when_below_min_edge_confidence():
     """
     Two low-confidence nodes, within the time window, produce a real but

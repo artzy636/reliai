@@ -10,11 +10,13 @@ workclass, fnlwgt, education, education-num, marital-status, occupation,
 relationship, race, sex, capital-gain, capital-loss, hours-per-week,
 native-country, income).
 
-One incident, carrying all FOUR distinct, simultaneous injected failure
+One incident, carrying all FIVE distinct, simultaneous injected failure
 types: feature drift (hours-per-week shifted), missing values
 (capital-loss partially nulled), duplicate rows (10% of rows
-re-appended), and a schema mismatch (fnlwgt dropped entirely). Earlier
-versions of this script split that into a detection-only showcase plus a
+re-appended), a schema mismatch (fnlwgt dropped entirely), and corrupted
+values (the same fraction of rows' age and education-num both scaled to
+extreme outliers). Earlier versions
+of this script split that into a detection-only showcase plus a
 separately-scoped "full" incident that left out missing values and
 schema mismatch, because remediation/verification_agent.py used to crash
 on both (NaN reaching LogisticRegression.predict() unconditionally, and a
@@ -22,7 +24,13 @@ dropped column never being reindexed before scoring). Both are fixed now
 -- see verification_agent.py's module docstring and _prepare_features --
 so there's no reason to keep the split: DataAgent, RCAAgent,
 RemediationAgent, and VerificationAgent all run against the same
-current_df, all four failures included, in a single real IncidentReport.
+current_df, all five failures included, in a single real IncidentReport.
+Corrupted values (detection/isolation_forest_detector.py) is the newest
+of the five -- it's the only failure type whose real detector (isolation
+forest, multivariate/row-level) previously didn't exist at all; before
+it was added, CORRUPTED_VALUES only existed as hand-scripted fixture
+events in evaluation/benchmark_runner.py, never as something DataAgent
+could actually find in real data.
 
 Per verification_agent.py's own numeric-feature assumption, only the
 Adult dataset's six numeric columns (age, fnlwgt, education-num,
@@ -56,6 +64,7 @@ from typing import Optional
 import pandas as pd
 
 from detection.fault_injection import (
+    inject_corrupted_values,
     inject_duplicate_rows,
     inject_feature_drift,
     inject_missing_values,
@@ -130,9 +139,9 @@ def build_real_data_incident(
     random_seed: int = 42,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Split the real Adult dataset into a clean reference_df and an
-    injected-fault current_df carrying four distinct, simultaneous
-    failure types: feature drift, missing values, duplicate rows, and a
-    dropped column.
+    injected-fault current_df carrying five distinct, simultaneous
+    failure types: feature drift, missing values, duplicate rows, a
+    dropped column, and corrupted values.
 
     Returns
     -------
@@ -152,6 +161,24 @@ def build_real_data_incident(
         current_df, fraction=0.1, random_seed=random_seed
     )
     current_df, _ = inject_schema_mismatch(current_df, "fnlwgt", mode="drop")
+    # Corrupt the SAME rows across TWO columns (calling inject_corrupted_values
+    # twice with the same fraction/random_seed picks the same row positions
+    # both times -- see the function's docstring), not one column in
+    # isolation. A single corrupted column that's already naturally
+    # wide-ranging in this dataset (age, next to capital-gain's 0-99999
+    # spread) turned out to be a weak, easily-diluted signal for a
+    # multivariate detector: verified empirically, corrupting age alone
+    # only got ~39% of the corrupted rows flagged by isolation forest,
+    # below this module's detection threshold entirely. Corrupting the
+    # same rows across age AND education-num together (a real, garbled
+    # row's fields would plausibly break together, not one at a time)
+    # gets 100% of the corrupted rows flagged.
+    current_df, _ = inject_corrupted_values(
+        current_df, "age", fraction=0.08, corruption_multiplier=20.0, random_seed=random_seed
+    )
+    current_df, _ = inject_corrupted_values(
+        current_df, "education-num", fraction=0.08, corruption_multiplier=20.0, random_seed=random_seed
+    )
 
     return reference_df, current_df
 
@@ -162,7 +189,7 @@ def run_real_data_incident(
     incident_id: Optional[str] = None,
 ) -> IncidentReport:
     """Run the complete four-layer pipeline against build_real_data_incident's
-    reference_df/current_df -- all four injected failures, one real
+    reference_df/current_df -- all five injected failures, one real
     IncidentReport, real measured before/after accuracy from
     VerificationAgent.
 

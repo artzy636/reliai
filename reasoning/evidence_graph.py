@@ -10,11 +10,13 @@ in Reasoning's code, not here" — so the two design decisions below are owned
 by this module, not the shared contract:
 
   * Clustering: events are grouped into a node if they share a
-    ``feature_name`` and are connected by a chain of consecutive timestamp
-    gaps no larger than ``configs.settings.GRAPH.time_window_minutes``
-    (events with ``feature_name=None`` are clustered among themselves as
-    "pipeline-level" evidence). A node's timestamp is the mean timestamp of
-    its member events; its confidence is the mean confidence.
+    ``feature_name``, are connected by a chain of consecutive timestamp
+    gaps no larger than ``configs.settings.GRAPH.time_window_minutes``,
+    AND are causally plausible with the event immediately before them in
+    that chain (events with ``feature_name=None`` are clustered among
+    themselves as "pipeline-level" evidence, same rule). A node's
+    timestamp is the mean timestamp of its member events; its confidence
+    is the mean confidence.
   * Edges: for every pair of nodes where one strictly precedes the other in
     time, an edge is proposed with a confidence that linearly decays to 0
     over ``GRAPH.time_window_minutes`` and is scaled by the two nodes'
@@ -120,14 +122,33 @@ class EvidenceGraphBuilder:
         return list(self._edges)
 
     def _cluster_events(self, events: list[EvidenceEvent]) -> list[EvidenceNode]:
-        """Group events into EvidenceNodes by feature_name + time proximity.
+        """Group events into EvidenceNodes by feature_name + time proximity
+        + causal plausibility.
 
         Events sharing a feature_name are clustered using consecutive-gap
         chaining: sort by timestamp, start a new cluster whenever the gap
         to the previous event in the (sorted) group exceeds
-        ``time_window_minutes``. This is equivalent to full pairwise
-        connected-components clustering on a sorted 1-D timeline, but is
-        O(n log n) instead of O(n^2).
+        ``time_window_minutes``, OR whenever the previous event's and this
+        event's inferred FailureTypes are not causally plausible together
+        (``schemas.are_failure_types_causally_plausible``). This is
+        equivalent to full pairwise connected-components clustering on a
+        sorted 1-D timeline, but is O(n log n) instead of O(n^2).
+
+        The plausibility check matters most for feature_name=None
+        ("pipeline-level") events: EVERY pipeline-level detector's findings
+        share the same feature_name (None) and, per this module's
+        docstring, are always close together in DataAgent's detection-time
+        timestamps regardless of relatedness -- so without this check, an
+        unrelated duplicate-row-rate finding and an unrelated
+        isolation-forest finding from the same investigate() call would
+        always merge into one node, silently discarding one of the two
+        distinct failure types (whichever detection_method didn't win
+        _make_node's Counter.most_common(1) tie-break). Reproduced for
+        real on the Adult-dataset incident: a genuine duplicates finding
+        and a genuine corrupted-values finding merged into a single node
+        labeled "duplicates" only, making the corrupted-values finding
+        invisible in the final RCA hypotheses despite DataAgent correctly
+        detecting it.
         """
         window = timedelta(minutes=self._settings.time_window_minutes)
         sorted_events = sorted(events, key=lambda e: (e.feature_name or "", e.timestamp))
@@ -136,7 +157,13 @@ class EvidenceGraphBuilder:
         for feature_name, group_iter in groupby(sorted_events, key=lambda e: e.feature_name):
             cluster: list[EvidenceEvent] = []
             for event in group_iter:
-                if cluster and (event.timestamp - cluster[-1].timestamp) > window:
+                if cluster and (
+                    (event.timestamp - cluster[-1].timestamp) > window
+                    or not are_failure_types_causally_plausible(
+                        infer_failure_type(cluster[-1].detection_method),
+                        infer_failure_type(event.detection_method),
+                    )
+                ):
                     nodes.append(self._make_node(feature_name, cluster))
                     cluster = []
                 cluster.append(event)
