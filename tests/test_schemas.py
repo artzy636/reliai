@@ -338,3 +338,31 @@ def test_root_cause_rank_resolves_structured_node_id_space():
     )
 
     assert rank == 1
+
+
+def test_root_cause_rank_does_not_count_repeated_causes_as_separate_ranks():
+    """An agent that lists the same wrong cause twice before the right one
+    must not be pushed to rank 3 by its own repetition: the reader sees two
+    distinct causes, so the right one is at rank 2."""
+    wrong = EvidenceEvent(
+        timestamp=datetime.now(timezone.utc),
+        detection_method=DetectionMethod.KS_TEST,
+        feature_name="age",
+        metric_value=0.3,
+        threshold=0.05,
+        confidence=0.9,
+        description="wrong cause",
+        ground_truth_label=None,
+    )
+    true_cause = _drift_event()
+    rca_result = RCAResult(
+        incident_id="incident-repeat",
+        hypotheses=[
+            _hypothesis(1, wrong.event_id),
+            _hypothesis(2, wrong.event_id),  # same cause, different wording
+            _hypothesis(3, true_cause.event_id),
+        ],
+        causal_path_node_ids=[wrong.event_id],
+    )
+
+    assert root_cause_rank(rca_result, FailureType.FEATURE_DRIFT, [wrong, true_cause]) == 2

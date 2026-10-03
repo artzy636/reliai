@@ -127,12 +127,13 @@ def test_pipeline_level_events_with_implausible_failure_types_do_not_cluster():
     assert methods == {DetectionMethod.DUPLICATE_ROW_RATE, DetectionMethod.ISOLATION_FOREST}
 
 
-def test_pipeline_level_events_with_plausible_failure_types_still_cluster():
-    """Contrast case: two pipeline-level events whose inferred failure
-    types ARE causally plausible together (corrupted values + feature
-    drift) still cluster into one node, same as before this fix -- the
-    plausibility check only splits implausible pairs, it doesn't turn off
-    clustering altogether."""
+def test_pipeline_level_events_from_different_detectors_stay_separate_even_if_plausible():
+    """Two pipeline-level events from DIFFERENT detectors stay separate
+    nodes even when their failure types are causally plausible together
+    (corrupted values + feature drift). Merging them averaged their
+    confidences (a 0.78 finding diluted to 0.49 by a 0.20 one) and let one
+    detector's name stand for both; corroboration is better expressed as
+    two nodes joined by an edge than as one blended node."""
     e1 = EvidenceEvent(
         timestamp=BASE,
         detection_method=DetectionMethod.ISOLATION_FOREST,
@@ -156,7 +157,36 @@ def test_pipeline_level_events_with_plausible_failure_types_still_cluster():
     builder.build([e1, e2])
     nodes = builder.get_nodes()
 
-    assert len(nodes) == 1
+    assert len(nodes) == 2
+    assert {round(node.confidence, 2) for node in nodes} == {0.2, 0.9}  # not blended
+
+
+def test_pipeline_level_events_from_the_same_detector_still_cluster():
+    """Same detector, same (pipeline-level) feature, within the window:
+    still one node -- only cross-detector merging was removed."""
+    e1 = EvidenceEvent(
+        timestamp=BASE,
+        detection_method=DetectionMethod.ISOLATION_FOREST,
+        feature_name=None,
+        metric_value=0.2,
+        threshold=0.1,
+        confidence=0.2,
+        description="corrupted rows, first window",
+    )
+    e2 = EvidenceEvent(
+        timestamp=BASE + timedelta(minutes=1),
+        detection_method=DetectionMethod.ISOLATION_FOREST,
+        feature_name=None,
+        metric_value=0.3,
+        threshold=0.1,
+        confidence=0.4,
+        description="corrupted rows, second window",
+    )
+
+    builder = EvidenceGraphBuilder()
+    builder.build([e1, e2])
+
+    assert len(builder.get_nodes()) == 1
 
 
 def test_edge_dropped_when_below_min_edge_confidence():

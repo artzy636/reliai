@@ -125,11 +125,11 @@ def test_run_incident_pipeline_produces_complete_report() -> None:
     )
     assert drifted_event.ground_truth_label == FailureType.FEATURE_DRIFT
 
-    # --- Evidence graph: the drifted node, plus the linked pipeline- ------
-    # level node (isolation-forest and rolling-accuracy findings cluster
-    # together -- CORRUPTED_VALUES and LABEL_SHIFT are causally plausible
-    # together, same as either is with FEATURE_DRIFT).
-    assert len(report.evidence_nodes) == 2
+    # --- Evidence graph: the drifted node, plus one node per pipeline- ----
+    # level detector (isolation-forest and rolling-accuracy findings are
+    # corroborating signals, kept as separate nodes rather than averaged
+    # into one -- see EvidenceGraphBuilder._cluster_events).
+    assert len(report.evidence_nodes) == 3
     drifted_node = next(
         node for node in report.evidence_nodes
         if node.node_type == f"feature_anomaly:{_DRIFTED_FEATURE}"

@@ -260,6 +260,7 @@ def _run_detection(
     data_path: str,
     random_seed: int,
     disabled_methods: Optional[set[DetectionMethod]],
+    legacy_ordering: bool = False,
 ) -> _DetectionOnlyResult:
     """Build the clean split, inject `case`'s one fault, run DataAgent for
     real, and stamp ground truth on the matching event(s) -- the detection
@@ -270,10 +271,21 @@ def _run_detection(
     reference_df, current_df = _split_reference_current(df, random_seed)
     current_df = case.inject(current_df)
 
+    # Default: every event shares one observation time, so the graph has no
+    # precedence edges -- a single comparison of two static dataframes has
+    # no real onset ordering, and DataAgent's loop order must not stand in
+    # for one. legacy_ordering=True reproduces the earlier behaviour
+    # (loop-order timestamps + the true fault artificially isolated) so
+    # old numbers stay reproducible.
     events = DataAgent().investigate(
-        reference_df, current_df, target_column=TARGET_COLUMN, disabled_methods=disabled_methods
+        reference_df,
+        current_df,
+        target_column=TARGET_COLUMN,
+        disabled_methods=disabled_methods,
+        snapshot_timestamps=not legacy_ordering,
     )
-    events = _isolate_ground_truth(events, case.matches)
+    if legacy_ordering:
+        events = _isolate_ground_truth(events, case.matches)
     events, n_matched = _stamp_ground_truth(events, case.matches, case.fault_type)
 
     matched_events = [event for event in events if case.matches(event)]
@@ -295,6 +307,7 @@ def run_single_fault_case(
     data_path: str = DEFAULT_DATA_PATH,
     random_seed: int = 42,
     disabled_methods: Optional[set[DetectionMethod]] = None,
+    legacy_ordering: bool = False,
 ) -> CaseRunResult:
     """Build the clean split, inject `case`'s one fault, run DataAgent for
     real, stamp ground truth on the matching event(s) only, then run both
@@ -314,7 +327,7 @@ def run_single_fault_case(
     so a detection-recall report can run over cases that got skipped for
     scoring too.
     """
-    detection = _run_detection(case, data_path, random_seed, disabled_methods)
+    detection = _run_detection(case, data_path, random_seed, disabled_methods, legacy_ordering)
     events, n_matched = detection.events, detection.n_matched
 
     if not detection.detected:
@@ -386,6 +399,7 @@ def run_all_cases(
     data_path: str = DEFAULT_DATA_PATH,
     random_seed: int = 42,
     disabled_methods: Optional[set[DetectionMethod]] = None,
+    legacy_ordering: bool = False,
 ) -> BenchmarkSummary:
     """Run every single-fault case and wrap the results in the same
     BenchmarkSummary type evaluation.benchmark_runner uses, so both
@@ -400,7 +414,12 @@ def run_all_cases(
     scores = []
     for case in _cases(random_seed):
         result = run_single_fault_case(
-            case, llm, data_path=data_path, random_seed=random_seed, disabled_methods=disabled_methods
+            case,
+            llm,
+            data_path=data_path,
+            random_seed=random_seed,
+            disabled_methods=disabled_methods,
+            legacy_ordering=legacy_ordering,
         )
         if result.score is not None:
             scores.append(result.score)
@@ -606,6 +625,16 @@ def _parse_args() -> argparse.Namespace:
             "Mutually exclusive with --detection-recall."
         ),
     )
+    parser.add_argument(
+        "--legacy-ordering",
+        action="store_true",
+        help=(
+            "Reproduce the earlier benchmark behaviour: events keep "
+            "DataAgent's loop-order timestamps and the injected fault is "
+            "artificially isolated in time. Off by default -- see "
+            "DataAgent.investigate's snapshot_timestamps docstring for why."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -630,7 +659,9 @@ if __name__ == "__main__":
         result_dict = ablation
         print(json.dumps(result_dict, indent=2))
     elif args.repeats <= 1:
-        summary = run_all_cases(llm, data_path=args.data_path, random_seed=args.random_seed)
+        summary = run_all_cases(
+            llm, data_path=args.data_path, random_seed=args.random_seed, legacy_ordering=args.legacy_ordering
+        )
         summary.print_table()
         print()
         result_dict = summary.as_dict()
@@ -643,7 +674,9 @@ if __name__ == "__main__":
         for repeat_num in range(1, args.repeats + 1):
             logger.info("=== Repeat %d/%d ===", repeat_num, args.repeats)
             summaries.append(
-                run_all_cases(llm, data_path=args.data_path, random_seed=args.random_seed)
+                run_all_cases(
+            llm, data_path=args.data_path, random_seed=args.random_seed, legacy_ordering=args.legacy_ordering
+        )
             )
         aggregated = AggregatedBenchmarkSummary(summaries=summaries)
         aggregated.print_table()

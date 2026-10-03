@@ -159,6 +159,16 @@ class EvidenceGraphBuilder:
             for event in group_iter:
                 if cluster and (
                     (event.timestamp - cluster[-1].timestamp) > window
+                    # Pipeline-level findings from DIFFERENT detectors measure
+                    # different things (duplicate rate vs anomaly rate vs
+                    # accuracy drop), so they never merge into one node, even
+                    # when their failure types are plausibly related and they
+                    # share a timestamp. Merging averaged their confidences and
+                    # let one detector's finding silently erase another's.
+                    or (
+                        feature_name is None
+                        and event.detection_method != cluster[-1].detection_method
+                    )
                     or not are_failure_types_causally_plausible(
                         infer_failure_type(cluster[-1].detection_method),
                         infer_failure_type(event.detection_method),

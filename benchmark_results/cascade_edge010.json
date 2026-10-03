@@ -1,0 +1,309 @@
+{
+  "n_repeats": 3,
+  "structured_accuracy_mean": 0.7142857142857143,
+  "structured_accuracy_stdev": 0.0,
+  "naive_accuracy_mean": 0.6190476190476191,
+  "naive_accuracy_stdev": 0.04123930494211617,
+  "structured_hit3_mean": 0.8571428571428571,
+  "structured_hit3_stdev": 0.0,
+  "naive_hit3_mean": 0.7380952380952381,
+  "naive_hit3_stdev": 0.10910894511799614,
+  "structured_mrr_mean": 0.7619047619047619,
+  "naive_mrr_mean": 0.6666666666666666,
+  "per_repeat": [
+    {
+      "structured_accuracy": 0.7142857142857143,
+      "naive_accuracy": 0.6428571428571429
+    },
+    {
+      "structured_accuracy": 0.7142857142857143,
+      "naive_accuracy": 0.6428571428571429
+    },
+    {
+      "structured_accuracy": 0.7142857142857143,
+      "naive_accuracy": 0.5714285714285714
+    }
+  ],
+  "per_incident_hit_rates": {
+    "drift_hours_per_week": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "drift_age": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "drift_education_num": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "corrupted_age_education_num": {
+      "structured_hits": 0,
+      "naive_hits": 0,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 1,
+      "total": 3
+    },
+    "corrupted_age_hours": {
+      "structured_hits": 3,
+      "naive_hits": 0,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 2,
+      "total": 3
+    },
+    "corrupted_education_hours_gain": {
+      "structured_hits": 0,
+      "naive_hits": 0,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 0,
+      "total": 3
+    },
+    "missing_capital_loss": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "missing_hours_per_week": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "duplicates_15pct": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "duplicates_30pct": {
+      "structured_hits": 3,
+      "naive_hits": 2,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "schema_drop_fnlwgt": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "schema_drop_education_num": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "label_shift_to_50pct": {
+      "structured_hits": 0,
+      "naive_hits": 0,
+      "structured_hit3_hits": 0,
+      "naive_hit3_hits": 0,
+      "total": 3
+    },
+    "label_shift_to_45pct": {
+      "structured_hits": 0,
+      "naive_hits": 0,
+      "structured_hit3_hits": 0,
+      "naive_hit3_hits": 1,
+      "total": 3
+    }
+  },
+  "structure": {
+    "drift_hours_per_week": {
+      "edges": [
+        "feature_anomaly:hours-per-week[ks_test] -> feature_anomaly:fnlwgt[ks_test]"
+      ],
+      "n_events": 3,
+      "n_nodes": 3,
+      "n_edges": 1,
+      "root_detected": true,
+      "root_has_downstream": true,
+      "root_has_incoming": false
+    },
+    "drift_age": {
+      "edges": [
+        "feature_anomaly:age[ks_test] -> feature_anomaly:fnlwgt[ks_test]",
+        "feature_anomaly:age[ks_test] -> pipeline_level_anomaly[isolation_forest]"
+      ],
+      "n_events": 3,
+      "n_nodes": 3,
+      "n_edges": 2,
+      "root_detected": true,
+      "root_has_downstream": true,
+      "root_has_incoming": false
+    },
+    "drift_education_num": {
+      "edges": [
+        "feature_anomaly:education-num[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:fnlwgt[ks_test] -> pipeline_level_anomaly[rolling_accuracy]"
+      ],
+      "n_events": 3,
+      "n_nodes": 3,
+      "n_edges": 2,
+      "root_detected": true,
+      "root_has_downstream": true,
+      "root_has_incoming": false
+    },
+    "corrupted_age_education_num": {
+      "edges": [
+        "pipeline_level_anomaly[isolation_forest] -> feature_anomaly:fnlwgt[ks_test]",
+        "feature_anomaly:age[ks_test] -> feature_anomaly:fnlwgt[ks_test]",
+        "feature_anomaly:education-num[ks_test] -> feature_anomaly:fnlwgt[ks_test]"
+      ],
+      "n_events": 5,
+      "n_nodes": 5,
+      "n_edges": 3,
+      "root_detected": true,
+      "root_has_downstream": true,
+      "root_has_incoming": false
+    },
+    "corrupted_age_hours": {
+      "edges": [
+        "pipeline_level_anomaly[isolation_forest] -> pipeline_level_anomaly[rolling_accuracy]",
+        "pipeline_level_anomaly[isolation_forest] -> feature_anomaly:fnlwgt[ks_test]",
+        "feature_anomaly:age[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:age[ks_test] -> feature_anomaly:fnlwgt[ks_test]",
+        "feature_anomaly:hours-per-week[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:hours-per-week[ks_test] -> feature_anomaly:fnlwgt[ks_test]"
+      ],
+      "n_events": 5,
+      "n_nodes": 5,
+      "n_edges": 6,
+      "root_detected": true,
+      "root_has_downstream": true,
+      "root_has_incoming": false
+    },
+    "corrupted_education_hours_gain": {
+      "edges": [
+        "pipeline_level_anomaly[isolation_forest] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:education-num[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:fnlwgt[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:hours-per-week[ks_test] -> pipeline_level_anomaly[rolling_accuracy]"
+      ],
+      "n_events": 5,
+      "n_nodes": 5,
+      "n_edges": 4,
+      "root_detected": true,
+      "root_has_downstream": true,
+      "root_has_incoming": false
+    },
+    "missing_capital_loss": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "missing_hours_per_week": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "duplicates_15pct": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "duplicates_30pct": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "schema_drop_fnlwgt": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "schema_drop_education_num": {
+      "edges": [
+        "feature_anomaly:education-num[schema_check] -> feature_anomaly:fnlwgt[ks_test]"
+      ],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 1,
+      "root_detected": true,
+      "root_has_downstream": true,
+      "root_has_incoming": false
+    },
+    "label_shift_to_50pct": {
+      "edges": [
+        "pipeline_level_anomaly[isolation_forest] -> pipeline_level_anomaly[rolling_accuracy]",
+        "pipeline_level_anomaly[isolation_forest] -> feature_anomaly:income[ks_test]",
+        "feature_anomaly:age[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:age[ks_test] -> feature_anomaly:income[ks_test]",
+        "feature_anomaly:capital-gain[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:capital-gain[ks_test] -> feature_anomaly:income[ks_test]",
+        "feature_anomaly:education-num[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:education-num[ks_test] -> feature_anomaly:income[ks_test]",
+        "feature_anomaly:hours-per-week[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:hours-per-week[ks_test] -> feature_anomaly:income[ks_test]"
+      ],
+      "n_events": 7,
+      "n_nodes": 7,
+      "n_edges": 10,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": true
+    },
+    "label_shift_to_45pct": {
+      "edges": [
+        "feature_anomaly:age[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:age[ks_test] -> pipeline_level_anomaly[isolation_forest]",
+        "feature_anomaly:age[ks_test] -> feature_anomaly:capital-gain[ks_test]",
+        "feature_anomaly:age[ks_test] -> feature_anomaly:hours-per-week[ks_test]",
+        "feature_anomaly:age[ks_test] -> feature_anomaly:income[ks_test]",
+        "feature_anomaly:education-num[ks_test] -> pipeline_level_anomaly[rolling_accuracy]",
+        "feature_anomaly:education-num[ks_test] -> pipeline_level_anomaly[isolation_forest]",
+        "feature_anomaly:education-num[ks_test] -> feature_anomaly:capital-gain[ks_test]",
+        "feature_anomaly:education-num[ks_test] -> feature_anomaly:hours-per-week[ks_test]",
+        "feature_anomaly:education-num[ks_test] -> feature_anomaly:income[ks_test]"
+      ],
+      "n_events": 7,
+      "n_nodes": 7,
+      "n_edges": 10,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": true
+    }
+  },
+  "settings": {
+    "n_windows": 10,
+    "label_delay": 2,
+    "persistence": 2,
+    "min_edge_confidence": 0.1
+  }
+}

@@ -389,38 +389,63 @@ class RCAAgent:
         including how to weigh coverage against edge-relationship
         plausibility, is still made by the LLM, not by this code.
         """
+        has_connected_candidate = any(len(c.path_node_ids) > 1 for c in candidates)
         lines = [
             "You are the root-cause ranking step of ReliAI's evidence-graph RCA agent.",
             "Below are candidate causal chains, already extracted deterministically "
-            "from an evidence graph's structure: node types, timestamps, confidences, "
-            "and edge relationships. You have no access to raw telemetry, feature "
-            "values, or dataframes -- do not invent any fact beyond what is listed.",
+            "from an evidence graph's structure: node types, the detector that produced "
+            "each node, timestamps, confidences, and edge relationships. You have no "
+            "access to raw telemetry, feature values, or dataframes -- do not invent "
+            "any fact beyond what is listed.",
             "",
-            f"This incident's evidence graph has {total_graph_nodes} total node(s). "
-            "Every candidate below has no node preceding it in time (in-degree 0), so "
-            "a high confidence score by itself does NOT prove a candidate is the true "
-            "root cause -- an unrelated, coincidental anomaly can score just as high. "
-            "What genuinely distinguishes a root cause is that real faults tend to "
-            "cascade into further downstream detections: a candidate whose causal "
-            "chain covers more of this incident's total nodes (stated for each "
-            "candidate below as \"covers X of N nodes\") is stronger evidence of being "
-            "the true root, while a candidate covering only itself, with no downstream "
-            "effects at all, is more consistent with being an isolated, coincidental "
-            "anomaly unrelated to the rest of the incident -- regardless of how high "
-            "its own confidence score looks.",
-            "",
-            f"Rank up to {self._settings.max_hypotheses} of the candidates below from "
-            "most to least likely root cause, weighing causal coverage alongside the "
-            "plausibility of each chain's edge relationships -- do not rank by raw "
-            "confidence score alone. For each, write a one- or two-sentence "
-            "explanation that explicitly references the node types and edge "
-            "relationships given for that candidate.",
-            "",
+        ]
+        if has_connected_candidate:
+            lines += [
+                f"This incident's evidence graph has {total_graph_nodes} total node(s). "
+                "Every candidate below has no node preceding it in time (in-degree 0), so "
+                "a high confidence score by itself does NOT prove a candidate is the true "
+                "root cause -- an unrelated, coincidental anomaly can score just as high. "
+                "What genuinely distinguishes a root cause is that real faults tend to "
+                "cascade into further downstream detections: a candidate whose causal "
+                "chain covers more of this incident's total nodes (stated for each "
+                "candidate below as \"covers X of N nodes\") is stronger evidence of being "
+                "the true root, while a candidate covering only itself, with no downstream "
+                "effects at all, is more consistent with being an isolated, coincidental "
+                "anomaly unrelated to the rest of the incident -- regardless of how high "
+                "its own confidence score looks.",
+                "",
+                f"Rank up to {self._settings.max_hypotheses} of the candidates below from "
+                "most to least likely root cause, weighing causal coverage alongside the "
+                "plausibility of each chain's edge relationships -- do not rank by raw "
+                "confidence score alone. For each, write a one- or two-sentence "
+                "explanation that explicitly references the node types and edge "
+                "relationships given for that candidate.",
+                "",
+            ]
+        else:
+            lines += [
+                f"This incident's evidence graph has {total_graph_nodes} total node(s) and "
+                "NO edges: the detections carry no temporal ordering, so the graph does "
+                "not show any detection cascading into another. Being unconnected is "
+                "therefore NOT evidence that a candidate is coincidental -- do not "
+                "penalize a candidate for covering only itself. Structure cannot "
+                "separate these candidates, so rank them on the evidence that is "
+                "available: each node's detection confidence and the detector that "
+                "produced it.",
+                "",
+                f"Rank up to {self._settings.max_hypotheses} of the candidates below from "
+                "most to least likely root cause. For each, write a one- or two-sentence "
+                "explanation that references the node type, detector and confidence "
+                "given for that candidate.",
+                "",
+            ]
+        lines += [
             "Candidates:",
         ]
         for candidate in candidates:
             chain_desc = " -> ".join(
-                f"{node.node_type} (t={node.timestamp.isoformat()}, confidence={node.confidence:.2f})"
+                f"{node.node_type} [detector={getattr(node.detection_method, 'value', node.detection_method)}] "
+                f"(t={node.timestamp.isoformat()}, confidence={node.confidence:.2f})"
                 for node in candidate.path_nodes
             )
             coverage = len(candidate.path_node_ids)
@@ -580,7 +605,9 @@ class NaiveRCAAgent:
             f"{self._settings.max_hypotheses} hypotheses, ordered most-to-least likely, "
             "where each element is exactly: "
             '{"event_ids": ["<event_id>", ...], "explanation": "<your guess>", '
-            '"confidence": <float 0-1>}.',
+            '"confidence": <float 0-1>}. The FIRST event_id in each element must be '
+            "the single event you believe is the root cause of that hypothesis; list "
+            "any other events it explains after it.",
         ]
         return "\n".join(lines)
 

@@ -1126,6 +1126,18 @@ def _parse_args() -> argparse.Namespace:
             "frontend's benchmark dashboard) without re-running the LLM."
         ),
     )
+    parser.add_argument(
+        "--no-graph-edges",
+        action="store_true",
+        help=(
+            "Ablation control: build the evidence graph with NO edges "
+            "(min_edge_confidence=1.0 -- an edge's confidence is always "
+            "strictly below 1.0). The structured agent then sees the same "
+            "nodes but no causal links. If its accuracy drops on the "
+            "cascade incidents, the graph is doing real work; if not, the "
+            "benefit comes from somewhere else (e.g. prompt/representation)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -1133,13 +1145,21 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     args = _parse_args()
 
+    runner_kwargs = {}
+    if args.no_graph_edges:
+        from configs.settings import GRAPH, GraphSettings
+
+        runner_kwargs["graph_builder"] = EvidenceGraphBuilder(
+            GraphSettings(time_window_minutes=GRAPH.time_window_minutes, min_edge_confidence=1.0)
+        )
+
     if args.real_llm:
         from remediation.pipeline_utils import get_llm
 
         llm = get_llm(use_stub=False)
-        runner = BenchmarkRunner(structured_llm=llm, naive_llm=llm)
+        runner = BenchmarkRunner(structured_llm=llm, naive_llm=llm, **runner_kwargs)
     else:
-        runner = BenchmarkRunner()
+        runner = BenchmarkRunner(**runner_kwargs)
 
     if args.repeats <= 1:
         result_summary = runner.run(load_builtin_incidents())

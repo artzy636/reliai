@@ -23,6 +23,7 @@ only job is column/pipeline iteration and collecting the results:
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
@@ -49,6 +50,7 @@ class DataAgent:
         current_df: pd.DataFrame,
         target_column: Optional[str] = None,
         disabled_methods: Optional[set[DetectionMethod]] = None,
+        snapshot_timestamps: bool = False,
     ) -> list[EvidenceEvent]:
         """Compare reference_df against current_df, running every available
         detector.
@@ -82,6 +84,22 @@ class DataAgent:
             that detector function or appends its event, so the only
             difference from a normal run is the exact set of
             EvidenceEvents produced.
+
+        snapshot_timestamps : bool
+            By default every detector stamps its event with the wall-clock
+            moment it ran, so events carry the order of this method's own
+            loops (columns in dataframe order, then schema, duplicates,
+            isolation forest, rolling accuracy) -- microseconds apart.
+            EvidenceGraphBuilder reads those gaps as "A preceded B" and
+            draws causal edges, but that order reflects how this method is
+            written, not when anything went wrong in the data. A single
+            comparison of two static dataframes contains no onset-time
+            information at all. Pass True to stamp every event from this
+            call with ONE shared observation time, so the graph builder
+            draws no precedence edges from loop order. Defaults to False
+            so existing callers (and the multi-fault demo built on those
+            gaps) are unchanged. Use True whenever the incident's temporal
+            order isn't independently known.
 
         Returns
         -------
@@ -179,5 +197,9 @@ class DataAgent:
                     label_shift_event.confidence,
                 )
                 events.append(label_shift_event)
+
+        if snapshot_timestamps and events:
+            observed_at = datetime.now(timezone.utc)
+            events = [event.model_copy(update={"timestamp": observed_at}) for event in events]
 
         return events

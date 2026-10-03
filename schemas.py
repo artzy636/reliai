@@ -395,16 +395,30 @@ def root_cause_rank(
     (Mean Reciprocal Rank) across incidents. Intentionally returns the
     hypothesis's own ``rank`` field rather than its list position, so a
     gap or reorder in how an agent numbers its hypotheses is reflected
-    faithfully rather than silently renumbered.
+    faithfully rather than silently renumbered -- with one correction: a
+    hypothesis that repeats an earlier hypothesis's cause (same resolved
+    root events) does not take a rank slot, so the value returned is the
+    rank among DISTINCT causes.
     """
     if ground_truth_label is None:
         return None
 
     labels_by_event_id = {event.event_id: event.ground_truth_label for event in evidence_events}
+    seen_causes: set[frozenset[str]] = set()
+    repeats_skipped = 0
     for hypothesis in rca_result.hypotheses:
         event_ids = resolve_hypothesis_root_event_ids(hypothesis, evidence_events, evidence_nodes)
         if any(labels_by_event_id.get(event_id) == ground_truth_label for event_id in event_ids):
-            return hypothesis.rank
+            return hypothesis.rank - repeats_skipped
+        cause = frozenset(event_ids)
+        if cause and cause in seen_causes:
+            # The same cause listed again under a new explanation. A reader
+            # sees one cause, not two, so it must not consume a rank slot --
+            # otherwise an agent that repeats itself gets pushed out of the
+            # top 3 by its own duplicates. (RCAAgent can't repeat a node;
+            # NaiveRCAAgent can, so counting repeats penalized only naive.)
+            repeats_skipped += 1
+        seen_causes.add(cause)
     return None
 
 

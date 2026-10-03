@@ -263,3 +263,62 @@ def test_naive_rca_accepts_plain_callable_llm():
 
     assert len(result.hypotheses) == 1
     assert result.hypotheses[0].explanation == "plain callable works"
+
+
+# ---------------------------------------------------------------------------
+# Prompt content: coverage principle only when the graph has structure, and
+# the detector behind each node is always visible.
+# ---------------------------------------------------------------------------
+
+def test_prompt_shows_which_detector_produced_each_node():
+    """Without the detector, every pipeline-level node reads identically
+    ("pipeline_level_anomaly"), so the LLM can't tell a duplicate-rate
+    finding from an accuracy drop. Detector names are structural facts;
+    failure-type labels still never appear."""
+    events = _single_cause_incident()
+    graph = EvidenceGraphBuilder().build(events)
+    llm = _StubChatModel("[]")
+
+    RCAAgent(llm=llm).analyze(graph, incident_id="incident-detector")
+
+    prompt = llm.prompts[0]
+    assert "[detector=population_stability_index]" in prompt
+    assert "DetectionMethod." not in prompt  # rendered as value, not enum repr
+    assert "feature_drift" not in prompt.lower()
+
+
+def test_prompt_applies_coverage_principle_when_graph_has_edges():
+    events = _single_cause_incident()
+    graph = EvidenceGraphBuilder().build(events)
+    assert graph.number_of_edges() > 0
+    llm = _StubChatModel("[]")
+
+    RCAAgent(llm=llm).analyze(graph, incident_id="incident-connected")
+
+    prompt = llm.prompts[0]
+    assert "causal coverage" in prompt
+    assert "NO edges" not in prompt
+
+
+def test_prompt_does_not_penalize_isolated_candidates_when_graph_has_no_edges():
+    """With no edges anywhere, 'covers only itself' carries no information
+    (every candidate does), so the prompt must not tell the LLM that being
+    unconnected suggests a coincidental anomaly."""
+    events = [
+        _event(0, "feature_a", 0.9),
+        _event(300, "feature_b", 0.5),  # far outside the time window: no edge
+    ]
+    graph = EvidenceGraphBuilder().build(events)
+    assert graph.number_of_edges() == 0
+    llm = _StubChatModel("[]")
+
+    RCAAgent(llm=llm).analyze(graph, incident_id="incident-flat")
+
+    prompt = llm.prompts[0]
+    assert "NO edges" in prompt
+    assert "do not penalize a candidate for covering only itself" in prompt
+    assert "more consistent with being an isolated, coincidental" not in prompt
+def test_naive_prompt_says_first_event_id_is_the_root():
+    from reasoning.rca_agent import NaiveRCAAgent
+    prompt = NaiveRCAAgent(llm=lambda p: '[]')._build_prompt(_single_cause_incident())
+    assert 'FIRST event_id' in prompt and 'root cause' in prompt

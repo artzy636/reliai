@@ -168,3 +168,45 @@ def test_investigate_detects_label_shift_when_target_column_given():
     )
     assert label_shift_event is not None
     assert label_shift_event.feature_name is None
+
+
+def test_snapshot_timestamps_stamps_every_event_with_one_shared_time():
+    """Default timestamps carry DataAgent's own loop order (microseconds
+    apart), which the graph builder would read as 'A preceded B'.
+    snapshot_timestamps=True gives every event from the call one shared
+    observation time instead, so no precedence edges can be inferred from
+    loop order."""
+    np.random.seed(42)
+
+    reference_df = pd.DataFrame({
+        "age": np.random.normal(30, 5, 500),
+        "income": np.random.normal(50000, 5000, 500),
+    })
+    current_df, _ = inject_feature_drift(
+        reference_df, "income", shift_amount=20000, random_seed=42
+    )
+    current_df["age"] = current_df["age"] + 8  # second drifted column
+
+    events = DataAgent().investigate(reference_df, current_df, snapshot_timestamps=True)
+
+    assert len(events) >= 2
+    assert len({event.timestamp for event in events}) == 1
+
+    from reasoning.evidence_graph import EvidenceGraphBuilder
+    graph = EvidenceGraphBuilder().build(events)
+    assert graph.number_of_edges() == 0
+
+
+def test_snapshot_timestamps_default_off_leaves_events_otherwise_identical():
+    np.random.seed(42)
+    reference_df = pd.DataFrame({"income": np.random.normal(50000, 5000, 500)})
+    current_df, _ = inject_feature_drift(
+        reference_df, "income", shift_amount=20000, random_seed=42
+    )
+
+    default = DataAgent().investigate(reference_df, current_df)
+    snapshot = DataAgent().investigate(reference_df, current_df, snapshot_timestamps=True)
+
+    assert [(e.detection_method, e.feature_name, e.confidence) for e in default] == [
+        (e.detection_method, e.feature_name, e.confidence) for e in snapshot
+    ]

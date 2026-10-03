@@ -1,0 +1,261 @@
+{
+  "n_repeats": 3,
+  "structured_accuracy_mean": 0.7142857142857143,
+  "structured_accuracy_stdev": 0.0,
+  "naive_accuracy_mean": 0.6190476190476191,
+  "naive_accuracy_stdev": 0.04123930494211617,
+  "structured_hit3_mean": 0.9285714285714285,
+  "structured_hit3_stdev": 1.3597399555105182e-16,
+  "naive_hit3_mean": 0.6904761904761906,
+  "naive_hit3_stdev": 0.041239304942116105,
+  "structured_mrr_mean": 0.8273809523809524,
+  "naive_mrr_mean": 0.6507936507936508,
+  "per_repeat": [
+    {
+      "structured_accuracy": 0.7142857142857143,
+      "naive_accuracy": 0.6428571428571429
+    },
+    {
+      "structured_accuracy": 0.7142857142857143,
+      "naive_accuracy": 0.6428571428571429
+    },
+    {
+      "structured_accuracy": 0.7142857142857143,
+      "naive_accuracy": 0.5714285714285714
+    }
+  ],
+  "per_incident_hit_rates": {
+    "drift_hours_per_week": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "drift_age": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "drift_education_num": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "corrupted_age_education_num": {
+      "structured_hits": 0,
+      "naive_hits": 0,
+      "structured_hit3_hits": 0,
+      "naive_hit3_hits": 2,
+      "total": 3
+    },
+    "corrupted_age_hours": {
+      "structured_hits": 3,
+      "naive_hits": 0,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 0,
+      "total": 3
+    },
+    "corrupted_education_hours_gain": {
+      "structured_hits": 0,
+      "naive_hits": 0,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 0,
+      "total": 3
+    },
+    "missing_capital_loss": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "missing_hours_per_week": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "duplicates_15pct": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "duplicates_30pct": {
+      "structured_hits": 3,
+      "naive_hits": 2,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "schema_drop_fnlwgt": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "schema_drop_education_num": {
+      "structured_hits": 3,
+      "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
+      "total": 3
+    },
+    "label_shift_to_50pct": {
+      "structured_hits": 0,
+      "naive_hits": 0,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 0,
+      "total": 3
+    },
+    "label_shift_to_45pct": {
+      "structured_hits": 0,
+      "naive_hits": 0,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 0,
+      "total": 3
+    }
+  },
+  "structure": {
+    "drift_hours_per_week": {
+      "edges": [],
+      "n_events": 3,
+      "n_nodes": 3,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "drift_age": {
+      "edges": [],
+      "n_events": 3,
+      "n_nodes": 3,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "drift_education_num": {
+      "edges": [],
+      "n_events": 3,
+      "n_nodes": 3,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "corrupted_age_education_num": {
+      "edges": [],
+      "n_events": 5,
+      "n_nodes": 5,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "corrupted_age_hours": {
+      "edges": [],
+      "n_events": 5,
+      "n_nodes": 5,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "corrupted_education_hours_gain": {
+      "edges": [],
+      "n_events": 5,
+      "n_nodes": 5,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "missing_capital_loss": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "missing_hours_per_week": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "duplicates_15pct": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "duplicates_30pct": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "schema_drop_fnlwgt": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "schema_drop_education_num": {
+      "edges": [],
+      "n_events": 2,
+      "n_nodes": 2,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "label_shift_to_50pct": {
+      "edges": [],
+      "n_events": 7,
+      "n_nodes": 7,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    },
+    "label_shift_to_45pct": {
+      "edges": [],
+      "n_events": 7,
+      "n_nodes": 7,
+      "n_edges": 0,
+      "root_detected": true,
+      "root_has_downstream": false,
+      "root_has_incoming": false
+    }
+  },
+  "settings": {
+    "n_windows": 10,
+    "label_delay": 2,
+    "persistence": 2,
+    "min_edge_confidence": 1.0
+  }
+}

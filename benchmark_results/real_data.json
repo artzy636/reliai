@@ -2,14 +2,14 @@
   "n_repeats": 3,
   "structured_accuracy_mean": 0.6666666666666666,
   "structured_accuracy_stdev": 0.0,
-  "naive_accuracy_mean": 0.611111111111111,
-  "naive_accuracy_stdev": 0.0962250448649376,
+  "naive_accuracy_mean": 0.6666666666666666,
+  "naive_accuracy_stdev": 0.0,
   "structured_hit3_mean": 0.8333333333333334,
   "structured_hit3_stdev": 0.0,
-  "naive_hit3_mean": 0.7777777777777777,
-  "naive_hit3_stdev": 0.1924500897298753,
-  "structured_mrr_mean": 0.7555555555555555,
-  "naive_mrr_mean": 0.6851851851851851,
+  "naive_hit3_mean": 0.888888888888889,
+  "naive_hit3_stdev": 0.0962250448649376,
+  "structured_mrr_mean": 0.7638888888888888,
+  "naive_mrr_mean": 0.75,
   "per_repeat": [
     {
       "structured_accuracy": 0.6666666666666666,
@@ -21,7 +21,7 @@
     },
     {
       "structured_accuracy": 0.6666666666666666,
-      "naive_accuracy": 0.5
+      "naive_accuracy": 0.6666666666666666
     }
   ],
   "per_incident_hit_rates": {
@@ -34,9 +34,9 @@
     },
     "missing_values_capital_loss": {
       "structured_hits": 3,
-      "naive_hits": 2,
+      "naive_hits": 3,
       "structured_hit3_hits": 3,
-      "naive_hit3_hits": 2,
+      "naive_hit3_hits": 3,
       "total": 3
     },
     "duplicate_rows": {
@@ -56,14 +56,14 @@
     "corrupted_values_age_and_education_num": {
       "structured_hits": 0,
       "naive_hits": 0,
-      "structured_hit3_hits": 3,
-      "naive_hit3_hits": 2,
+      "structured_hit3_hits": 0,
+      "naive_hit3_hits": 3,
       "total": 3
     },
     "label_shift_income": {
       "structured_hits": 0,
       "naive_hits": 0,
-      "structured_hit3_hits": 0,
+      "structured_hit3_hits": 3,
       "naive_hit3_hits": 1,
       "total": 3
     }
