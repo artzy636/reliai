@@ -67,6 +67,56 @@ def test_investigate_detects_corrupted_values():
     assert corrupted_event.feature_name is None
 
 
+def test_investigate_disabled_methods_skips_only_those_detectors():
+    """disabled_methods removes exactly the named detector's events and
+    leaves every other detector untouched (ablation-study hook)."""
+
+    np.random.seed(42)
+
+    reference_df = pd.DataFrame({
+        "age": np.random.normal(30, 5, 500),
+        "income": np.random.normal(50000, 5000, 500),
+    })
+    current_df, _ = inject_feature_drift(
+        reference_df, "income", shift_amount=20000, random_seed=42
+    )
+    current_df = current_df.drop(columns=["age"])  # also triggers schema_check
+
+    agent = DataAgent()
+    baseline = agent.investigate(reference_df, current_df)
+    baseline_methods = {event.detection_method for event in baseline}
+    assert DetectionMethod.KS_TEST in baseline_methods
+    assert DetectionMethod.SCHEMA_CHECK in baseline_methods
+
+    without_ks = agent.investigate(
+        reference_df, current_df, disabled_methods={DetectionMethod.KS_TEST}
+    )
+    methods = {event.detection_method for event in without_ks}
+    assert DetectionMethod.KS_TEST not in methods
+    assert DetectionMethod.SCHEMA_CHECK in methods
+
+    without_schema = agent.investigate(
+        reference_df, current_df, disabled_methods={DetectionMethod.SCHEMA_CHECK}
+    )
+    methods = {event.detection_method for event in without_schema}
+    assert DetectionMethod.SCHEMA_CHECK not in methods
+    assert DetectionMethod.KS_TEST in methods
+
+
+def test_investigate_disabled_methods_none_matches_default():
+    np.random.seed(42)
+    reference_df = pd.DataFrame({"income": np.random.normal(50000, 5000, 500)})
+    current_df, _ = inject_feature_drift(
+        reference_df, "income", shift_amount=20000, random_seed=42
+    )
+
+    agent = DataAgent()
+    default_events = agent.investigate(reference_df, current_df)
+    explicit_none = agent.investigate(reference_df, current_df, disabled_methods=None)
+
+    assert [e.detection_method for e in default_events] == [e.detection_method for e in explicit_none]
+
+
 def test_investigate_without_target_column_skips_label_shift_check():
     """No target_column passed -> DataAgent behaves exactly as it always
     has, same as every existing caller that doesn't have one."""

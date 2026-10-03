@@ -198,11 +198,22 @@ def run_real_data_incident(
     data_path: str = DEFAULT_DATA_PATH,
     random_seed: int = 42,
     incident_id: Optional[str] = None,
+    use_stub_llm: bool = True,
 ) -> IncidentReport:
     """Run the complete four-layer pipeline against build_real_data_incident's
     reference_df/current_df -- all six injected failures, one real
     IncidentReport, real measured before/after accuracy from
     VerificationAgent.
+
+    Parameters
+    ----------
+    use_stub_llm : bool
+        Forwarded to remediation.pipeline_utils.get_llm(). True (the
+        default) uses the deterministic offline stub -- no API key, no
+        network call, and RCAAgent's ranking/explanation step is then just
+        deterministic code echoing its own candidate order. False uses a
+        real Gemini call instead (requires GOOGLE_API_KEY -- see get_llm's
+        docstring), so the ranking/explanation is an actual LLM's output.
 
     Returns
     -------
@@ -215,7 +226,7 @@ def run_real_data_incident(
         reference_df,
         current_df,
         target_column=TARGET_COLUMN,
-        llm=get_llm(),
+        llm=get_llm(use_stub=use_stub_llm),
         incident_id=incident_id,
     )
     logger.info(
@@ -252,6 +263,16 @@ def _parse_args() -> argparse.Namespace:
         default=42,
         help="Random seed for the reference/current split and fault injection (default: 42)",
     )
+    parser.add_argument(
+        "--real-llm",
+        action="store_true",
+        help=(
+            "Use a real Gemini call for RCA ranking/explanation instead of "
+            "the deterministic offline stub. Requires GOOGLE_API_KEY to be "
+            "set (see remediation/pipeline_utils.py's get_llm() docstring "
+            "for how to get a free key)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -259,6 +280,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     args = _parse_args()
 
-    report = run_real_data_incident(args.data_path, random_seed=args.random_seed)
+    report = run_real_data_incident(
+        args.data_path, random_seed=args.random_seed, use_stub_llm=not args.real_llm
+    )
     Path(args.output).write_text(report.model_dump_json(indent=2), encoding="utf-8")
     logger.info("Wrote real-data IncidentReport (incident_id=%s) to %s", report.incident_id, args.output)

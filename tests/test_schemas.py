@@ -18,6 +18,7 @@ from schemas import (
     VerificationResult,
     resolve_hypothesis_root_event_ids,
     root_cause_is_correct,
+    root_cause_rank,
 )
 
 
@@ -218,3 +219,122 @@ def test_root_cause_is_correct_structured_id_without_evidence_nodes_is_false_not
     )
 
     assert root_cause_is_correct(rca_result, FailureType.FEATURE_DRIFT, [event]) is False
+
+
+# ---------------------------------------------------------------------------
+# root_cause_rank: the Hit@3/MRR-enabling sibling of root_cause_is_correct.
+# root_cause_is_correct only ever looks at hypotheses[0] (Hit@1); these
+# pin down that root_cause_rank instead walks the FULL ranked list and
+# returns the correct cause's own 1-based rank (or None if it's absent
+# from the list entirely), matching this module's docstring exactly.
+# ---------------------------------------------------------------------------
+
+def _hypothesis(rank: int, node_id: str) -> RootCauseHypothesis:
+    return RootCauseHypothesis(
+        rank=rank, node_id=node_id, explanation=f"candidate at rank {rank}",
+        confidence=0.9, supporting_node_ids=[node_id],
+    )
+
+
+def test_root_cause_rank_is_one_when_top_hypothesis_correct():
+    """Mirrors root_cause_is_correct's True case: when hypotheses[0] is
+    correct, root_cause_rank must agree exactly (rank == 1), not just
+    agree on correctness."""
+    event = _drift_event()
+    rca_result = RCAResult(
+        incident_id="incident-rank-1",
+        hypotheses=[_hypothesis(1, event.event_id)],
+        causal_path_node_ids=[event.event_id],
+    )
+
+    assert root_cause_rank(rca_result, FailureType.FEATURE_DRIFT, [event]) == 1
+    # And root_cause_is_correct, defined as rank == 1, must agree.
+    assert root_cause_is_correct(rca_result, FailureType.FEATURE_DRIFT, [event]) is True
+
+
+def test_root_cause_rank_finds_correct_cause_below_rank_one():
+    """The case root_cause_is_correct can't see: the correct cause sits at
+    rank 2, behind a wrong but higher-ranked distractor. Hit@1 would call
+    this a flat miss; root_cause_rank must report exactly where it is."""
+    distractor = _drift_event()
+    distractor_event = EvidenceEvent(
+        timestamp=distractor.timestamp,
+        detection_method=DetectionMethod.ISOLATION_FOREST,
+        feature_name=None,
+        metric_value=0.5,
+        threshold=0.1,
+        confidence=0.95,
+        description="unrelated high-confidence anomaly",
+        ground_truth_label=None,
+    )
+    true_cause = _drift_event()
+    rca_result = RCAResult(
+        incident_id="incident-rank-2",
+        hypotheses=[
+            _hypothesis(1, distractor_event.event_id),
+            _hypothesis(2, true_cause.event_id),
+        ],
+        causal_path_node_ids=[distractor_event.event_id, true_cause.event_id],
+    )
+
+    rank = root_cause_rank(
+        rca_result, FailureType.FEATURE_DRIFT, [distractor_event, true_cause]
+    )
+
+    assert rank == 2
+    # Hit@1 correctly calls this wrong -- that's the gap Hit@3/MRR fill.
+    assert root_cause_is_correct(
+        rca_result, FailureType.FEATURE_DRIFT, [distractor_event, true_cause]
+    ) is False
+
+
+def test_root_cause_rank_is_none_when_correct_cause_never_ranked():
+    """The correct cause doesn't appear anywhere in the agent's own ranked
+    list at all -- a total miss, distinct from "ranked but low"."""
+    true_cause = _drift_event()
+    other_node_id = "some-other-candidate-id"
+    rca_result = RCAResult(
+        incident_id="incident-rank-none",
+        hypotheses=[_hypothesis(1, other_node_id)],
+        causal_path_node_ids=[other_node_id],
+    )
+
+    assert root_cause_rank(rca_result, FailureType.FEATURE_DRIFT, [true_cause]) is None
+
+
+def test_root_cause_rank_is_none_when_ground_truth_label_is_none():
+    """No ground truth (production, not a benchmark run) -> no rank to
+    report, same convention as root_cause_is_correct returning False."""
+    event = _drift_event()
+    rca_result = RCAResult(
+        incident_id="incident-no-gt",
+        hypotheses=[_hypothesis(1, event.event_id)],
+        causal_path_node_ids=[event.event_id],
+    )
+
+    assert root_cause_rank(rca_result, None, [event]) is None
+
+
+def test_root_cause_rank_resolves_structured_node_id_space():
+    """Same id-space bridging root_cause_is_correct needs (see the
+    resolve_hypothesis_root_event_ids tests above) applies to
+    root_cause_rank too -- it must work through evidence_nodes, not just
+    the naive event_id-as-node_id shortcut."""
+    event_a, event_b = _drift_event(0.9), _drift_event(0.85)
+    node = EvidenceNode(
+        node_type="feature_anomaly:customer_age",
+        source_events=[event_a.event_id, event_b.event_id],
+        timestamp=event_a.timestamp,
+        confidence=0.88,
+    )
+    rca_result = RCAResult(
+        incident_id="incident-structured-rank",
+        hypotheses=[_hypothesis(1, node.node_id)],
+        causal_path_node_ids=[node.node_id],
+    )
+
+    rank = root_cause_rank(
+        rca_result, FailureType.FEATURE_DRIFT, [event_a, event_b], [node]
+    )
+
+    assert rank == 1

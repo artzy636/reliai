@@ -101,27 +101,52 @@ def test_builtin_incidents_full_benchmark_matches_hand_verified_results():
         "benchmark-corrupted-values-002",
         "benchmark-duplicates-003",
         "benchmark-label-shift-004",
+        "benchmark-clean-schema-005",
+        "benchmark-clean-corrupted-006",
+        "benchmark-deep-chain-007",
+        "benchmark-temporal-trap-008",
+        "benchmark-dual-failure-009",
+        "benchmark-weak-root-010",
+        "benchmark-label-shift-trap-011",
+        "benchmark-schema-duplicates-trap-012",
     ]
 
     summary = BenchmarkRunner().run(incidents)
 
+    # Structured always agrees with RCAAgent's own deterministic candidate
+    # ordering (the stub's whole job), which always ranks the connected
+    # causal chain above an isolated node -- hence 100% here regardless of
+    # incident design. Naive (highest-raw-confidence stub) is correct
+    # exactly when the true root's own event has the single highest
+    # confidence in the incident, and wrong whenever a distractor's
+    # confidence is even slightly higher -- by design, several of the new
+    # incidents (008, 010, 011, 012) give the distractor a higher raw
+    # confidence than the true root specifically to test this.
     expected = {
         "benchmark-schema-cascade-001": (True, False),
         "benchmark-corrupted-values-002": (True, True),
         "benchmark-duplicates-003": (True, False),
         "benchmark-label-shift-004": (True, True),
+        "benchmark-clean-schema-005": (True, True),
+        "benchmark-clean-corrupted-006": (True, True),
+        "benchmark-deep-chain-007": (True, True),
+        "benchmark-temporal-trap-008": (True, False),
+        "benchmark-dual-failure-009": (True, True),
+        "benchmark-weak-root-010": (True, False),
+        "benchmark-label-shift-trap-011": (True, False),
+        "benchmark-schema-duplicates-trap-012": (True, False),
     }
     actual = {
         score.incident_id: (score.structured_correct, score.naive_correct) for score in summary.scores
     }
     assert actual == expected
 
-    assert summary.n_incidents == 4
+    assert summary.n_incidents == 12
     assert summary.structured_accuracy == pytest.approx(1.0)
     assert summary.naive_accuracy == pytest.approx(0.5)
 
     as_dict = summary.as_dict()
-    assert as_dict["n_incidents"] == 4
+    assert as_dict["n_incidents"] == 12
     assert as_dict["structured_accuracy"] == pytest.approx(1.0)
     assert as_dict["naive_accuracy"] == pytest.approx(0.5)
     assert as_dict["per_incident"][0] == {

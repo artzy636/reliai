@@ -1,0 +1,26 @@
+{
+  "n_repeats": 3,
+  "structured_accuracy_mean": 1.0,
+  "structured_accuracy_stdev": 0.0,
+  "naive_accuracy_mean": 0.8055555555555555,
+  "naive_accuracy_stdev": 0.17347216662217774,
+  "per_repeat": [
+    { "structured_accuracy": 1.0, "naive_accuracy": 0.6666666666666666 },
+    { "structured_accuracy": 1.0, "naive_accuracy": 1.0 },
+    { "structured_accuracy": 1.0, "naive_accuracy": 0.75 }
+  ],
+  "per_incident_hit_rates": {
+    "benchmark-schema-cascade-001": { "structured_hits": 3, "naive_hits": 1, "total": 3 },
+    "benchmark-corrupted-values-002": { "structured_hits": 3, "naive_hits": 3, "total": 3 },
+    "benchmark-duplicates-003": { "structured_hits": 3, "naive_hits": 3, "total": 3 },
+    "benchmark-label-shift-004": { "structured_hits": 3, "naive_hits": 3, "total": 3 },
+    "benchmark-clean-schema-005": { "structured_hits": 3, "naive_hits": 2, "total": 3 },
+    "benchmark-clean-corrupted-006": { "structured_hits": 3, "naive_hits": 3, "total": 3 },
+    "benchmark-deep-chain-007": { "structured_hits": 3, "naive_hits": 1, "total": 3 },
+    "benchmark-temporal-trap-008": { "structured_hits": 3, "naive_hits": 3, "total": 3 },
+    "benchmark-dual-failure-009": { "structured_hits": 3, "naive_hits": 1, "total": 3 },
+    "benchmark-weak-root-010": { "structured_hits": 3, "naive_hits": 3, "total": 3 },
+    "benchmark-label-shift-trap-011": { "structured_hits": 3, "naive_hits": 3, "total": 3 },
+    "benchmark-schema-duplicates-trap-012": { "structured_hits": 3, "naive_hits": 3, "total": 3 }
+  }
+}

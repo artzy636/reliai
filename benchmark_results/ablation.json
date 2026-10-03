@@ -1,0 +1,53 @@
+{
+  "configs": {
+    "baseline": {
+      "n_incidents": 6,
+      "structured_accuracy": 0.6666666666666666,
+      "naive_accuracy": 0.0,
+      "structured_hit3": 1.0,
+      "naive_hit3": 0.0
+    },
+    "without_ks_test": {
+      "n_incidents": 5,
+      "structured_accuracy": 0.6,
+      "naive_accuracy": 0.0,
+      "structured_hit3": 1.0,
+      "naive_hit3": 0.0
+    },
+    "without_missing_value_rate": {
+      "n_incidents": 5,
+      "structured_accuracy": 0.6,
+      "naive_accuracy": 0.0,
+      "structured_hit3": 1.0,
+      "naive_hit3": 0.0
+    },
+    "without_schema_check": {
+      "n_incidents": 5,
+      "structured_accuracy": 0.6,
+      "naive_accuracy": 0.0,
+      "structured_hit3": 1.0,
+      "naive_hit3": 0.0
+    },
+    "without_duplicate_row_rate": {
+      "n_incidents": 5,
+      "structured_accuracy": 0.6,
+      "naive_accuracy": 0.0,
+      "structured_hit3": 1.0,
+      "naive_hit3": 0.0
+    },
+    "without_isolation_forest": {
+      "n_incidents": 5,
+      "structured_accuracy": 0.8,
+      "naive_accuracy": 0.0,
+      "structured_hit3": 1.0,
+      "naive_hit3": 0.0
+    },
+    "without_rolling_accuracy": {
+      "n_incidents": 5,
+      "structured_accuracy": 0.8,
+      "naive_accuracy": 0.0,
+      "structured_hit3": 1.0,
+      "naive_hit3": 0.0
+    }
+  }
+}

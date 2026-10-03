@@ -42,6 +42,17 @@ def detect_missing_values(
 
     threshold = DETECTION.missing_value_rate
 
+    if len(current) == 0:
+        # An empty column has an undefined (NaN) null rate. NaN slips past
+        # `null_rate <= threshold` below (a NaN comparison is always False
+        # in Python/NumPy) and would otherwise reach the confidence
+        # calculation, where min()/max() resolve a NaN-vs-number comparison
+        # to the number -- producing a spurious confidence=1.0 "missing
+        # values detected" event for a column with nothing in it. Same
+        # failure mode already documented and fixed for the KS test in
+        # detection/ks_detector.py.
+        return None
+
     null_rate = current.isna().mean()
 
     if null_rate <= threshold:

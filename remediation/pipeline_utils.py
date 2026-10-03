@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import re
 from typing import Optional
@@ -37,6 +38,27 @@ N_DRIFTED_FEATURES = 3
 # generate_injected_drift_data()'s docstring.
 
 _ROOT_ID_RE = re.compile(r"^- root_node_id: (\S+)$", re.MULTILINE)
+
+# Real-LLM configuration (get_llm(use_stub=False)). Gemini specifically:
+# it has a genuinely free tier (no billing setup required for a low-volume
+# student project), unlike Anthropic/OpenAI's pay-as-you-go-from-key-one
+# model.
+#
+# Model choice: deliberately NOT the newest flagship flash model
+# (gemini-3.8-flash). That model is Google's most-hyped current release
+# ("engineered for long-horizon software engineering"), so free-tier
+# traffic to it is heavy and it returns frequent 503 "high demand"
+# responses -- observed directly running this project's benchmark.
+# gemini-3.5-flash-lite is explicitly positioned by Google as the
+# high-throughput/cost-efficient tier, gets far less of that contention,
+# and is more than capable of this module's actual LLM task: ranking a
+# handful of already-found deterministic candidates and writing a short
+# explanation for each (see reasoning/rca_agent.py's module docstring) --
+# not a task that needs frontier reasoning power. Overridable via the
+# GEMINI_MODEL environment variable without touching code, in case Google
+# retires this one too or a different model fits better.
+_GEMINI_API_KEY_ENV_VAR = "GOOGLE_API_KEY"
+_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 
 class StructuralAgreementStubLLM:
@@ -71,26 +93,50 @@ def get_llm(use_stub: bool = True) -> LLMLike:
 
     Args:
         use_stub: if True (the default -- no API key needed), returns the
-            deterministic StructuralAgreementStubLLM. If False, this is
-            where a real LangChain-style chat model would be constructed
-            and returned instead (e.g. ``ChatAnthropic(model=...)``); no
-            such client is wired up yet, so this branch raises rather than
-            silently falling back to the stub.
+            deterministic StructuralAgreementStubLLM. If False, returns a
+            real langchain_google_genai.ChatGoogleGenerativeAI client
+            (model=_GEMINI_MODEL) -- Gemini specifically because it has a
+            free tier, so this doesn't require billing to be set up just
+            to run the benchmark once. RCAAgent/NaiveRCAAgent accept it
+            as-is: it's a LangChain BaseChatModel, exposing
+            ``.invoke(prompt) -> AIMessage``, same interface
+            reasoning/rca_agent.py's _call_llm already handles.
 
     Returns:
-        An LLMLike object accepted by RCAAgent (anything with
-        ``.invoke(prompt) -> AIMessage``, or a plain ``Callable[[str], str]``).
+        An LLMLike object accepted by RCAAgent.
 
     Raises:
-        NotImplementedError: if use_stub is False.
+        ImportError: if use_stub is False and langchain-google-genai isn't
+            installed (`pip install langchain-google-genai`).
+        RuntimeError: if use_stub is False and the GOOGLE_API_KEY
+            environment variable isn't set. Get a free key at
+            https://aistudio.google.com/apikey -- this never prompts for
+            one or reads it from anywhere else, so a missing key fails
+            loudly here rather than the API call failing confusingly later.
     """
     if use_stub:
         return StructuralAgreementStubLLM()
-    raise NotImplementedError(
-        "No real LLM client is wired up yet. Construct a LangChain-style "
-        "chat model here (anything exposing .invoke(prompt) -> AIMessage) "
-        "and return it -- RCAAgent/run_incident_pipeline accept it as-is."
-    )
+
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+    except ImportError as exc:
+        raise ImportError(
+            "langchain-google-genai is not installed. Run "
+            "`pip install langchain-google-genai` (also added to "
+            "requirements.txt) to use a real Gemini client here."
+        ) from exc
+
+    api_key = os.environ.get(_GEMINI_API_KEY_ENV_VAR)
+    if not api_key:
+        raise RuntimeError(
+            f"{_GEMINI_API_KEY_ENV_VAR} is not set. Get a free key at "
+            "https://aistudio.google.com/apikey, then set it as an "
+            f"environment variable ({_GEMINI_API_KEY_ENV_VAR}) before "
+            "calling get_llm(use_stub=False)."
+        )
+
+    logger.info("Constructing real Gemini client (model=%s)", _GEMINI_MODEL)
+    return ChatGoogleGenerativeAI(model=_GEMINI_MODEL, google_api_key=api_key, temperature=0)
 
 
 def _select_weighted_features(

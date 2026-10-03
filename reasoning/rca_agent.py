@@ -77,8 +77,39 @@ def _call_llm(llm: LLMLike, prompt: str) -> str:
     """
     if hasattr(llm, "invoke"):
         response = llm.invoke(prompt)
-        return response.content if hasattr(response, "content") else str(response)
-    return llm(prompt)
+        content = response.content if hasattr(response, "content") else response
+    else:
+        content = llm(prompt)
+    return _stringify_llm_content(content)
+
+
+def _stringify_llm_content(content: Any) -> str:
+    """Normalize a chat model's response content to plain text.
+
+    Most LangChain chat models return ``.content`` as a plain string, but
+    some (observed with Gemini via langchain-google-genai) instead return
+    a list of content blocks -- each either a bare string or a dict like
+    ``{"type": "text", "text": "..."}`` -- even for an ordinary single-turn
+    text reply. Concatenate any text found in such blocks and silently
+    skip non-text blocks (e.g. thought-summary parts); fall back to
+    ``str()`` for anything else so this never raises on an unexpected
+    provider response shape.
+    """
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+
+    return str(content)
 
 
 def _extract_json_array(raw: str) -> str:
@@ -306,7 +337,7 @@ class RCAAgent:
                 "or a Callable[[str], str] via RCAAgent(llm=...)."
             )
 
-        prompt = self._build_prompt(candidates)
+        prompt = self._build_prompt(candidates, total_graph_nodes=state["graph"].number_of_nodes())
         raw_response = _call_llm(self._llm, prompt)
         ordered = self._parse_llm_response(raw_response, candidates)
         if ordered is None:
@@ -334,12 +365,29 @@ class RCAAgent:
         capped = state["hypotheses"][: self._settings.max_hypotheses]
         return {"hypotheses": capped}
 
-    def _build_prompt(self, candidates: list[_CausalCandidate]) -> str:
+    def _build_prompt(self, candidates: list[_CausalCandidate], total_graph_nodes: int) -> str:
         """Build a prompt containing ONLY structural graph facts -- node
         types, timestamps, node/edge confidences, edge relationships and
         their (already-structural) evidence strings. No raw EvidenceEvent
         telemetry (metric_value, threshold, description) or
         ground_truth_label ever reaches this text.
+
+        Every candidate handed to this method has in-degree 0 in the
+        evidence graph (see _build_candidates) -- nothing in the incident
+        causally precedes it -- so per-node detection confidence alone
+        cannot tell a genuine root cause apart from an unrelated,
+        coincidental anomaly that also happens to score high confidence.
+        The one fact that *can* tell them apart is causal coverage: a real
+        fault typically cascades into further downstream detections, so a
+        chain that causally explains more of the incident's total nodes is
+        stronger evidence of being the true root than a chain that covers
+        only itself. This method computes and states that coverage for
+        each candidate explicitly (`len(candidate.path_node_ids)` out of
+        `total_graph_nodes`) and states the reasoning principle in the
+        instructions below, rather than pre-computing a final ranking and
+        asking the LLM to just repeat it -- the actual ranking judgment,
+        including how to weigh coverage against edge-relationship
+        plausibility, is still made by the LLM, not by this code.
         """
         lines = [
             "You are the root-cause ranking step of ReliAI's evidence-graph RCA agent.",
@@ -348,8 +396,23 @@ class RCAAgent:
             "and edge relationships. You have no access to raw telemetry, feature "
             "values, or dataframes -- do not invent any fact beyond what is listed.",
             "",
+            f"This incident's evidence graph has {total_graph_nodes} total node(s). "
+            "Every candidate below has no node preceding it in time (in-degree 0), so "
+            "a high confidence score by itself does NOT prove a candidate is the true "
+            "root cause -- an unrelated, coincidental anomaly can score just as high. "
+            "What genuinely distinguishes a root cause is that real faults tend to "
+            "cascade into further downstream detections: a candidate whose causal "
+            "chain covers more of this incident's total nodes (stated for each "
+            "candidate below as \"covers X of N nodes\") is stronger evidence of being "
+            "the true root, while a candidate covering only itself, with no downstream "
+            "effects at all, is more consistent with being an isolated, coincidental "
+            "anomaly unrelated to the rest of the incident -- regardless of how high "
+            "its own confidence score looks.",
+            "",
             f"Rank up to {self._settings.max_hypotheses} of the candidates below from "
-            "most to least likely root cause. For each, write a one- or two-sentence "
+            "most to least likely root cause, weighing causal coverage alongside the "
+            "plausibility of each chain's edge relationships -- do not rank by raw "
+            "confidence score alone. For each, write a one- or two-sentence "
             "explanation that explicitly references the node types and edge "
             "relationships given for that candidate.",
             "",
@@ -360,8 +423,12 @@ class RCAAgent:
                 f"{node.node_type} (t={node.timestamp.isoformat()}, confidence={node.confidence:.2f})"
                 for node in candidate.path_nodes
             )
+            coverage = len(candidate.path_node_ids)
             lines.append(f"- root_node_id: {candidate.root_node_id}")
-            lines.append(f"  causal_chain: {chain_desc}")
+            lines.append(
+                f"  causal_chain: {chain_desc}  "
+                f"[covers {coverage} of {total_graph_nodes} total node(s) in this incident]"
+            )
             for edge in candidate.path_edges:
                 lines.append(
                     f"  edge: {edge.source_node_id} -> {edge.target_node_id} "

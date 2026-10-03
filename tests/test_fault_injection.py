@@ -276,10 +276,15 @@ def test_schema_mismatch_injection_retype():
 
     injected_df, label = inject_schema_mismatch(df, "age", mode="retype")
 
-    assert injected_df["age"].dtype == object
+    # astype(str) yields "object" dtype on pandas < 3.0 and a dedicated
+    # StringDtype under pandas >= 3.0's new string-inference default --
+    # either way the real invariant this mode simulates is "no longer
+    # numeric", which is also all detection/schema_mismatch_detector.py's
+    # dtype-kind check (pd.api.types.is_numeric_dtype) actually cares about.
+    assert not pd.api.types.is_numeric_dtype(injected_df["age"].dtype)
     assert injected_df["age"].tolist() == ["20", "22", "24"]
     assert label == FailureType.SCHEMA_MISMATCH
-    assert df["age"].dtype != object  # original untouched
+    assert pd.api.types.is_numeric_dtype(df["age"].dtype)  # original untouched
 
 
 def test_schema_mismatch_injection_missing_column_raises():

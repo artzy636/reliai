@@ -370,6 +370,44 @@ def root_cause_is_correct(
     return any(labels_by_event_id.get(event_id) == ground_truth_label for event_id in event_ids)
 
 
+def root_cause_rank(
+    rca_result: RCAResult,
+    ground_truth_label: Optional[FailureType],
+    evidence_events: list[EvidenceEvent],
+    evidence_nodes: Optional[list[EvidenceNode]] = None,
+) -> Optional[int]:
+    """Where in the agent's OWN ranked hypothesis list does the correct
+    root cause first appear?
+
+    ``root_cause_is_correct`` only ever looks at ``hypotheses[0]`` (Hit@1).
+    That's the right definition for "root cause accuracy" as a pass/fail
+    metric, but it throws away information: an agent that puts the true
+    cause at rank 2 is doing something very different from one that never
+    surfaces it at all, and Hit@1 scores both as "WRONG" identically. This
+    walks the full ranked list (not just the top entry) and returns the
+    1-based ``rank`` of the first hypothesis that resolves back to evidence
+    carrying ``ground_truth_label``, or ``None`` if no hypothesis in the
+    list does -- the correct cause never made it into the agent's
+    consideration set at all, not even at a low rank.
+
+    Callers derive Hit@k as ``rank is not None and rank <= k``, and
+    reciprocal rank as ``1/rank if rank else 0`` for averaging into MRR
+    (Mean Reciprocal Rank) across incidents. Intentionally returns the
+    hypothesis's own ``rank`` field rather than its list position, so a
+    gap or reorder in how an agent numbers its hypotheses is reflected
+    faithfully rather than silently renumbered.
+    """
+    if ground_truth_label is None:
+        return None
+
+    labels_by_event_id = {event.event_id: event.ground_truth_label for event in evidence_events}
+    for hypothesis in rca_result.hypotheses:
+        event_ids = resolve_hypothesis_root_event_ids(hypothesis, evidence_events, evidence_nodes)
+        if any(labels_by_event_id.get(event_id) == ground_truth_label for event_id in event_ids):
+            return hypothesis.rank
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Final assembled output — owned by Reasoning, as part of the evaluation/
 # benchmark layer (see docs/TASKS.md)

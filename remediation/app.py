@@ -22,8 +22,22 @@ Run with: streamlit run remediation/app.py
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
+
+# `streamlit run remediation/app.py` (per this module's own "Run with"
+# instruction above) makes Streamlit exec this file directly, which puts
+# only this file's own directory (remediation/) on sys.path -- not the
+# project root. Every sibling top-level package this file imports below
+# (reasoning, schemas, ...) lives one level up, so without this the very
+# first cross-package import raises ModuleNotFoundError. `pytest`/`python -m
+# evaluation....` don't need this: they already run with the project root
+# on sys.path (see pytest.ini's `pythonpath = .` for the pytest half of
+# that). This mirrors the same fix for this file's own entry-point case.
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -166,12 +180,30 @@ def _reconstruct_edges(nodes: list[EvidenceNode]) -> list[EvidenceEdge]:
     return EvidenceGraphBuilder()._build_edges(nodes)
 
 
+# Above this many edges, per-edge confidence labels drawn directly on the
+# diagram (as the small "1.00" tags next to each line) stop being legible
+# and start being pure clutter -- a real-data incident's graph can have
+# ~30 edges (every node within the time window links to every causally-
+# plausible one), where 3-node synthetic demos have 2-3. Past this count,
+# the labels move into the "Edge details" table below instead of the
+# figure itself.
+_MAX_EDGE_LABELS_ON_DIAGRAM = 12
+
+
 def render_evidence_graph(
     nodes: list[EvidenceNode], highlight_node_id: Optional[str] = None
 ) -> None:
     """Visual of nodes + reconstructed edges (networkx + matplotlib),
     showing causal structure. The top RCA hypothesis's node is highlighted
-    in red when highlight_node_id is given."""
+    in red when highlight_node_id is given.
+
+    Sized and laid out dynamically rather than with one fixed
+    figsize/layout for every report: a 3-node synthetic-drift demo and a
+    real multi-fault incident's ~10-node, ~30-edge graph need different
+    treatment, or the dense case renders as illegible overlapping text
+    (confirmed on the real Adult-dataset incident's report) while the
+    sparse case would look sparse and washed-out at the dense case's size.
+    """
     st.header("3. Evidence Graph")
     if not nodes:
         st.info("No evidence nodes.")
@@ -184,9 +216,28 @@ def render_evidence_graph(
     for edge in edges:
         graph.add_edge(edge.source_node_id, edge.target_node_id, **edge.model_dump())
 
-    fig, ax = _new_dark_figure((8, 5))
-    if graph.number_of_nodes() > 1:
-        layout = nx.spring_layout(graph, seed=42, k=1.1)
+    n_nodes = graph.number_of_nodes()
+
+    # Scale the canvas with the node count instead of a fixed (8, 5) --
+    # otherwise a 10-node graph has no more room than a 3-node one.
+    fig_w = min(16.0, max(8.0, 1.5 * n_nodes))
+    fig_h = min(10.0, max(5.0, 1.0 * n_nodes))
+    fig, ax = _new_dark_figure((fig_w, fig_h))
+
+    if n_nodes > 1:
+        try:
+            # Kamada-Kawai spreads nodes by graph-theoretic distance rather
+            # than spring-force simulation -- empirically far less prone to
+            # the near-total node/label overlap spring_layout produced on
+            # a dense ~10-node, ~30-edge graph (every node sits within the
+            # same small time window of every other, so spring forces alone
+            # don't pull them apart much). Falls back to a wider spring
+            # layout for anything Kamada-Kawai can't handle (e.g. a
+            # disconnected graph, where its distance matrix has no path
+            # between components).
+            layout = nx.kamada_kawai_layout(graph)
+        except (nx.NetworkXError, ValueError):
+            layout = nx.spring_layout(graph, seed=42, k=2.5 / (n_nodes ** 0.5))
     else:
         layout = {nodes[0].node_id: (0.0, 0.0)}
 
@@ -196,7 +247,7 @@ def render_evidence_graph(
     # Long node_type labels (e.g. "feature_anomaly:feature_3") extend past
     # the node circle; without extra margin, labels near the layout's edge
     # get clipped by the figure boundary.
-    ax.margins(0.2)
+    ax.margins(0.25)
     nx.draw_networkx_nodes(
         graph,
         layout,
@@ -206,33 +257,55 @@ def render_evidence_graph(
         linewidths=1.5,
         ax=ax,
     )
+    # Edge opacity scales with the edge's own confidence, so a dense graph
+    # reads as a visual hierarchy (strong links stand out, weak ones recede)
+    # instead of ~30 identical-weight lines on top of each other -- no
+    # edges are hidden, every one drawn is still real evidence.
+    for source, target, data in graph.edges(data=True):
+        nx.draw_networkx_edges(
+            graph,
+            layout,
+            edgelist=[(source, target)],
+            arrows=True,
+            arrowsize=14,
+            arrowstyle="-|>",
+            edge_color=_EDGE_COLOR,
+            width=1.4,
+            alpha=max(0.25, data["confidence"]),
+            ax=ax,
+            connectionstyle="arc3,rad=0.15",
+            node_size=1000,
+        )
+    # node_type split across two lines ("feature_anomaly" / "capital-loss")
+    # instead of one long "feature_anomaly:capital-loss" string -- roughly
+    # halves each label's horizontal footprint, the single biggest driver
+    # of label-on-label overlap in the dense case. A dark, semi-transparent
+    # backing box keeps the text readable where it crosses an edge line.
+    label_font_size = max(6, 9 - 0.25 * n_nodes)
     nx.draw_networkx_labels(
         graph,
         layout,
-        labels={n: graph.nodes[n]["node_type"] for n in graph.nodes},
-        font_size=7,
+        labels={n: graph.nodes[n]["node_type"].replace(":", "\n") for n in graph.nodes},
+        font_size=label_font_size,
         font_color=_TEXT_COLOR,
+        bbox=dict(facecolor=_DARK_BG, edgecolor="none", alpha=0.65, pad=0.5),
         ax=ax,
     )
-    nx.draw_networkx_edges(
-        graph,
-        layout,
-        arrows=True,
-        arrowsize=16,
-        arrowstyle="-|>",
-        edge_color=_EDGE_COLOR,
-        width=1.4,
-        ax=ax,
-        connectionstyle="arc3,rad=0.15",
-        node_size=1000,
-    )
-    edge_labels = {(u, v): f"{d['confidence']:.2f}" for u, v, d in graph.edges(data=True)}
-    nx.draw_networkx_edge_labels(
-        graph, layout, edge_labels=edge_labels, font_size=7, font_color=_MUTED_TEXT_COLOR, ax=ax
-    )
+    edge_count = graph.number_of_edges()
+    if edge_count <= _MAX_EDGE_LABELS_ON_DIAGRAM:
+        edge_labels = {(u, v): f"{d['confidence']:.2f}" for u, v, d in graph.edges(data=True)}
+        nx.draw_networkx_edge_labels(
+            graph, layout, edge_labels=edge_labels, font_size=7, font_color=_MUTED_TEXT_COLOR, ax=ax
+        )
     ax.set_axis_off()
     st.pyplot(fig)
     plt.close(fig)
+
+    if edge_count > _MAX_EDGE_LABELS_ON_DIAGRAM:
+        st.caption(
+            f"{edge_count} edges — too many to label legibly on the diagram; "
+            "see \"Edge details\" below for the full list."
+        )
 
     with st.expander("Node details"):
         for node in nodes:
@@ -242,6 +315,18 @@ def render_evidence_graph(
                 f"(confidence={node.confidence:.2f}, method={method}, "
                 f"{len(node.source_events)} source event(s))"
             )
+
+    if edges:
+        with st.expander(f"Edge details ({len(edges)})"):
+            node_types_by_id = {node.node_id: node.node_type for node in nodes}
+            for edge in sorted(edges, key=lambda e: e.confidence, reverse=True):
+                source_label = node_types_by_id.get(edge.source_node_id, edge.source_node_id[:8])
+                target_label = node_types_by_id.get(edge.target_node_id, edge.target_node_id[:8])
+                st.write(
+                    f"**{source_label}** → **{target_label}** "
+                    f"(`{edge.relationship}`, confidence={edge.confidence:.2f}) "
+                    f"— {edge.evidence}"
+                )
 
 
 # ---------------------------------------------------------------------------

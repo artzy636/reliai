@@ -40,7 +40,7 @@ def inject_feature_drift(
     if column_name not in injected_df.columns:
         raise ValueError(f"Column '{column_name}' does not exist.")
 
-    if not np.issubdtype(injected_df[column_name].dtype, np.number):
+    if not pd.api.types.is_numeric_dtype(injected_df[column_name]):
         raise ValueError(f"Column '{column_name}' must be numeric.")
 
     injected_df[column_name] = injected_df[column_name] + shift_amount
@@ -263,7 +263,7 @@ def inject_corrupted_values(
     if column_name not in df.columns:
         raise ValueError(f"Column '{column_name}' does not exist.")
 
-    if not np.issubdtype(df[column_name].dtype, np.number):
+    if not pd.api.types.is_numeric_dtype(df[column_name]):
         raise ValueError(f"Column '{column_name}' must be numeric.")
 
     if not 0.0 <= fraction <= 1.0:
