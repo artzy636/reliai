@@ -1,52 +1,70 @@
 {
   "n_repeats": 3,
-  "structured_accuracy_mean": 0.611111111111111,
-  "structured_accuracy_stdev": 0.0962250448649376,
-  "naive_accuracy_mean": 0.6666666666666666,
-  "naive_accuracy_stdev": 0.0,
+  "structured_accuracy_mean": 0.6666666666666666,
+  "structured_accuracy_stdev": 0.0,
+  "naive_accuracy_mean": 0.611111111111111,
+  "naive_accuracy_stdev": 0.0962250448649376,
+  "structured_hit3_mean": 0.8333333333333334,
+  "structured_hit3_stdev": 0.0,
+  "naive_hit3_mean": 0.7777777777777777,
+  "naive_hit3_stdev": 0.1924500897298753,
+  "structured_mrr_mean": 0.7555555555555555,
+  "naive_mrr_mean": 0.6851851851851851,
   "per_repeat": [
     {
       "structured_accuracy": 0.6666666666666666,
       "naive_accuracy": 0.6666666666666666
     },
     {
-      "structured_accuracy": 0.5,
+      "structured_accuracy": 0.6666666666666666,
       "naive_accuracy": 0.6666666666666666
     },
     {
       "structured_accuracy": 0.6666666666666666,
-      "naive_accuracy": 0.6666666666666666
+      "naive_accuracy": 0.5
     }
   ],
   "per_incident_hit_rates": {
     "feature_drift_hours_per_week": {
       "structured_hits": 3,
       "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
       "total": 3
     },
     "missing_values_capital_loss": {
       "structured_hits": 3,
-      "naive_hits": 3,
+      "naive_hits": 2,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 2,
       "total": 3
     },
     "duplicate_rows": {
       "structured_hits": 3,
       "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
       "total": 3
     },
     "schema_mismatch_fnlwgt": {
-      "structured_hits": 2,
+      "structured_hits": 3,
       "naive_hits": 3,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 3,
       "total": 3
     },
     "corrupted_values_age_and_education_num": {
       "structured_hits": 0,
       "naive_hits": 0,
+      "structured_hit3_hits": 3,
+      "naive_hit3_hits": 2,
       "total": 3
     },
     "label_shift_income": {
       "structured_hits": 0,
       "naive_hits": 0,
+      "structured_hit3_hits": 0,
+      "naive_hit3_hits": 1,
       "total": 3
     }
   },
@@ -55,7 +73,7 @@
       "name": "feature_drift_hours_per_week",
       "fault_type": "feature_drift",
       "detected": true,
-      "confidence": 1.0,
+      "confidence": 0.95,
       "detection_methods": [
         "ks_test"
       ]
@@ -64,7 +82,7 @@
       "name": "missing_values_capital_loss",
       "fault_type": "missing_values",
       "detected": true,
-      "confidence": 0.22220857276751793,
+      "confidence": 0.5699766594324557,
       "detection_methods": [
         "missing_value_rate"
       ]
@@ -73,7 +91,7 @@
       "name": "duplicate_rows",
       "fault_type": "duplicates",
       "detected": true,
-      "confidence": 0.08859886505895846,
+      "confidence": 0.42486825238570003,
       "detection_methods": [
         "duplicate_row_rate"
       ]
@@ -91,7 +109,7 @@
       "name": "corrupted_values_age_and_education_num",
       "fault_type": "corrupted_values",
       "detected": true,
-      "confidence": 4.0948364112851505e-05,
+      "confidence": 0.19014004340526594,
       "detection_methods": [
         "isolation_forest"
       ]
@@ -100,7 +118,7 @@
       "name": "label_shift_income",
       "fault_type": "label_shift",
       "detected": true,
-      "confidence": 0.16374827231111272,
+      "confidence": 0.7811312630431169,
       "detection_methods": [
         "rolling_accuracy"
       ]

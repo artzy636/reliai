@@ -5,6 +5,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
 
 from configs.settings import DETECTION
+from detection.confidence import effect_confidence
 from schemas import (
     DetectionMethod,
     EvidenceEvent,
@@ -123,10 +124,7 @@ def detect_label_shift(
     if drop <= threshold:
         return None
 
-    confidence = max(
-        0.0,
-        min(1.0, (drop - threshold) / (1 - threshold))
-    )
+    confidence = effect_confidence(drop, DETECTION.rolling_accuracy_drop_full_scale)
 
     return EvidenceEvent(
         timestamp=datetime.now(timezone.utc),

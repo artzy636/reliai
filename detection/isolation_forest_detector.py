@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 
 from configs.settings import DETECTION
+from detection.confidence import effect_confidence
 from schemas import (
     DetectionMethod,
     EvidenceEvent,
@@ -92,14 +93,31 @@ def detect_corrupted_values(
     predictions = model.predict(current_features)  # -1 = anomaly, 1 = normal
     anomaly_rate = (predictions == -1).mean()
 
-    threshold = contamination + DETECTION.isolation_forest_anomaly_rate_margin
+    # The flagging margin shrinks with sample size: a fixed +0.05 margin is
+    # ~5 standard errors at n=500 but >20 at n=10k, where it hid a real 2x
+    # anomaly-rate increase. Use z standard errors of the baseline rate
+    # (both the reference-fit quantile and the current sample contribute
+    # noise), floored at isolation_forest_margin_floor and capped at the
+    # old fixed margin so this is never LESS sensitive than before.
+    standard_error = (
+        contamination * (1 - contamination)
+        * (1 / len(current_features) + 1 / len(reference_features))
+    ) ** 0.5
+    margin = min(
+        DETECTION.isolation_forest_anomaly_rate_margin,
+        max(
+            DETECTION.isolation_forest_margin_floor,
+            DETECTION.isolation_forest_margin_z * standard_error,
+        ),
+    )
+    threshold = contamination + margin
 
     if anomaly_rate <= threshold:
         return None
 
-    confidence = max(
-        0.0,
-        min(1.0, (anomaly_rate - threshold) / (1 - threshold))
+    # Effect = how far above the model's own false-positive baseline.
+    confidence = effect_confidence(
+        anomaly_rate - contamination, DETECTION.isolation_forest_excess_full_scale
     )
 
     return EvidenceEvent(

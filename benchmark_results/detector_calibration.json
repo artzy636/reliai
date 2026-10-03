@@ -1,0 +1,117 @@
+{
+  "n_seeds": 10,
+  "cases": {
+    "feature_drift_hours_per_week": {
+      "new": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 1.0,
+        "mrr": 1.0,
+        "mean_true_confidence": 0.95
+      },
+      "legacy": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 1.0,
+        "mrr": 1.0,
+        "mean_true_confidence": 1.0
+      }
+    },
+    "missing_values_capital_loss": {
+      "new": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 1.0,
+        "mrr": 1.0,
+        "mean_true_confidence": 0.5699766594324557
+      },
+      "legacy": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 1.0,
+        "mrr": 1.0,
+        "mean_true_confidence": 0.22220857276751793
+      }
+    },
+    "duplicate_rows": {
+      "new": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 1.0,
+        "mrr": 1.0,
+        "mean_true_confidence": 0.42403385082846695
+      },
+      "legacy": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 0.9,
+        "mrr": 0.95,
+        "mean_true_confidence": 0.08832150166043223
+      }
+    },
+    "schema_mismatch_fnlwgt": {
+      "new": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 1.0,
+        "mrr": 1.0,
+        "mean_true_confidence": 1.0
+      },
+      "legacy": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 1.0,
+        "mrr": 1.0,
+        "mean_true_confidence": 1.0
+      }
+    },
+    "corrupted_values_age_and_education_num": {
+      "new": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 0.4,
+        "mrr": 0.5583333333333333,
+        "mean_true_confidence": 0.25129233037140164
+      },
+      "legacy": {
+        "detected_rate": 0.7,
+        "top1_by_confidence": 0.0,
+        "mrr": 0.225,
+        "mean_true_confidence": 0.029978752348843653
+      }
+    },
+    "label_shift_income": {
+      "new": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 0.0,
+        "mrr": 0.33333333333333337,
+        "mean_true_confidence": 0.7735686483834633
+      },
+      "legacy": {
+        "detected_rate": 1.0,
+        "top1_by_confidence": 0.0,
+        "mrr": 0.11527777777777778,
+        "mean_true_confidence": 0.1616421052631579
+      }
+    }
+  },
+  "overall": {
+    "new": {
+      "detected_rate": 1.0,
+      "top1_by_confidence": 0.7333333333333333,
+      "mrr": 0.8152777777777782,
+      "mean_true_confidence": 0.6614785815026313
+    },
+    "legacy": {
+      "detected_rate": 0.95,
+      "top1_by_confidence": 0.65,
+      "mrr": 0.7150462962962969,
+      "mean_true_confidence": 0.4373960186553155
+    }
+  },
+  "clean_control": {
+    "new": {
+      "ks_test": {
+        "events_per_split": 0.1,
+        "mean_confidence": 0.03980863464504569
+      }
+    },
+    "legacy": {
+      "ks_test": {
+        "events_per_split": 0.1,
+        "mean_confidence": 0.16370000000000007
+      }
+    }
+  }
+}

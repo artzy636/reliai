@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from configs.settings import DETECTION
+from detection.confidence import effect_confidence
 from schemas import (
     DetectionMethod,
     EvidenceEvent,
@@ -58,10 +59,7 @@ def detect_missing_values(
     if null_rate <= threshold:
         return None
 
-    confidence = max(
-        0.0,
-        min(1.0, (null_rate - threshold) / (1 - threshold))
-    )
+    confidence = effect_confidence(null_rate, DETECTION.missing_value_rate_full_scale)
 
     return EvidenceEvent(
         timestamp=datetime.now(timezone.utc),

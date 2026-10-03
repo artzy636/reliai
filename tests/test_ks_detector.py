@@ -96,3 +96,23 @@ def test_all_nan_current_returns_none_instead_of_crashing():
     )
 
     assert event is None
+
+def test_confidence_tracks_effect_size_not_sample_size():
+    """A statistically significant but tiny shift on a large sample used to
+    saturate at confidence 1.0 (1 - p/alpha). Confidence must now reflect
+    the KS statistic D, so a tiny shift is low-confidence and a large shift
+    is high-confidence."""
+    rng = np.random.RandomState(0)
+
+    reference = rng.normal(0, 1, 50_000)
+    tiny_shift = rng.normal(0.05, 1, 50_000)   # D ~ 0.02, but p << 0.05 at this n
+    big_shift = rng.normal(1.0, 1, 50_000)     # D ~ 0.38
+
+    tiny = detect_distribution_shift(reference, tiny_shift, feature_name="x")
+    big = detect_distribution_shift(reference, big_shift, feature_name="x")
+
+    assert tiny is not None and tiny.metric_value < 0.05
+    assert tiny.confidence < 0.2
+    assert big is not None
+    assert big.confidence > 0.9
+    assert big.confidence < 1.0  # statistical estimates never reach certainty

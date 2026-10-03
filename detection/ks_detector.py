@@ -4,6 +4,7 @@ import pandas as pd
 from scipy.stats import ks_2samp
 
 from configs.settings import DETECTION
+from detection.confidence import effect_confidence
 from schemas import (
     DetectionMethod,
     EvidenceEvent,
@@ -78,10 +79,11 @@ def detect_distribution_shift(
     if pvalue >= threshold:
         return None
 
-    confidence = max(
-        0.0,
-        min(1.0, 1 - (pvalue / threshold))
-    )
+    # Significance (p < alpha) decides whether the event fires; effect size
+    # (the KS statistic D, i.e. the max CDF gap) decides how confident it is.
+    # 1 - p/alpha used to be the confidence, but it saturates at 1.0 for any
+    # large sample regardless of how small the shift actually is.
+    confidence = effect_confidence(statistic, DETECTION.ks_statistic_full_scale)
 
     return EvidenceEvent(
         timestamp=datetime.now(timezone.utc),

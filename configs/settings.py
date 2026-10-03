@@ -32,6 +32,25 @@ class DetectionThresholds:
     duplicate_row_rate: float = 0.05          # flag the pipeline if duplicate-row rate exceeds 5%
     schema_mismatch_tolerance: float = 0.0    # flag any missing column or dtype change (zero tolerance)
 
+    # --- Confidence calibration -------------------------------------------
+    # A detector's *threshold* decides whether it fires; its *confidence*
+    # says how large the observed effect is. Confidence = effect / full_scale,
+    # clamped to [0, 1], where effect is measured from the no-fault baseline
+    # (0 for KS D / null rate / duplicate rate / accuracy drop; the
+    # contamination baseline for the isolation forest) and full_scale is the
+    # effect size we'd call unmistakably severe. Keeping these in one place
+    # makes events from different detectors comparable: 0.5 means "half of a
+    # clearly severe effect" no matter which detector produced it.
+    ks_statistic_full_scale: float = 0.30          # KS D of 0.30 -> confidence 1.0
+    missing_value_rate_full_scale: float = 0.50    # half the column null -> 1.0
+    duplicate_row_rate_full_scale: float = 0.30    # 30% duplicate rows -> 1.0
+    isolation_forest_excess_full_scale: float = 0.25   # anomaly rate 25 pts above baseline -> 1.0
+    rolling_accuracy_drop_full_scale: float = 0.25     # 25-pt accuracy drop -> 1.0
+    # Isolation-forest flagging margin is sample-size aware (see detector):
+    # z standard errors of the baseline rate, bounded to [floor, margin above].
+    isolation_forest_margin_z: float = 5.0
+    isolation_forest_margin_floor: float = 0.02
+
 
 @dataclass(frozen=True)
 class GraphSettings:
