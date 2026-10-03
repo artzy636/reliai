@@ -154,7 +154,17 @@ def test_builtin_incidents_full_benchmark_matches_hand_verified_results():
         "ground_truth_label": "schema_mismatch",
         "structured_correct": True,
         "naive_correct": False,
+        # Rank of the correct cause in each agent's own hypothesis list:
+        # structured has it at #1; the highest-confidence naive stub picks
+        # a distractor and never lists the true root at all (None).
+        "structured_rank": 1,
+        "naive_rank": None,
     }
+    # Hit@3/MRR aggregates: structured is 100% at rank 1, so Hit@3 and MRR
+    # are both perfect; naive can't do better than its Hit@1 here.
+    assert as_dict["structured_hit3"] == pytest.approx(1.0)
+    assert as_dict["structured_mrr"] == pytest.approx(1.0)
+    assert as_dict["naive_hit3"] >= as_dict["naive_accuracy"]
     # Must be JSON-serializable as-is (the report/paper table depends on this).
     json.dumps(as_dict)
 
